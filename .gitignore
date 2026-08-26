@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# App data (created at runtime, not part of the source tree)
+*.db
+*.db-journal
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
