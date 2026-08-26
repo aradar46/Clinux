@@ -21,13 +21,11 @@ class SystemScanner:
         if not icon_name or icon_name in {"application-x-executable", "applications-other"}:
             return None
 
-        # Clean quotes
         icon_name = icon_name.strip('"\'; ')
 
         if icon_name in cls._icon_cache:
             return cls._icon_cache[icon_name]
 
-        # 1. Absolute path check
         if icon_name.startswith("/"):
             p = Path(icon_name)
             if p.exists() and p.is_file():
@@ -43,7 +41,6 @@ class SystemScanner:
 
         clean_stem = Path(icon_name).stem.lower()
 
-        # Fast direct lookup paths
         direct_checks = [
             Path(f"/usr/share/pixmaps/{clean_stem}.png"),
             Path(f"/usr/share/pixmaps/{clean_stem}.svg"),
@@ -65,7 +62,6 @@ class SystemScanner:
                 cls._icon_cache[icon_name] = str(cand.resolve())
                 return str(cand.resolve())
 
-        # Check theme subdirectories
         for base in [Path.home() / ".local/share/icons", Path("/usr/share/icons")]:
             if not base.exists():
                 continue
@@ -90,15 +86,15 @@ class SystemScanner:
         """Return list of standard directories where portable/manual apps reside"""
         home = Path.home()
         roots = [
-            DEFAULT_OPT_DIR,                    # ~/.local/opt
-            Path("/opt"),                       # /opt
-            Path("/usr/local/opt"),             # /usr/local/opt
-            home / "opt",                       # ~/opt
-            home / "Applications",              # ~/Applications
-            home / "Apps",                      # ~/Apps
-            home / "Software",                  # ~/Software
-            home / "programs",                  # ~/programs
-            home / "AppImages"                  # ~/AppImages
+            DEFAULT_OPT_DIR,
+            Path("/opt"),
+            Path("/usr/local/opt"),
+            home / "opt",
+            home / "Applications",
+            home / "Apps",
+            home / "Software",
+            home / "programs",
+            home / "AppImages"
         ]
         return [r for r in roots if r.exists() and r.is_dir()]
 
@@ -122,7 +118,6 @@ class SystemScanner:
 
             exec_path = entry_data["exec_clean"]
 
-            # Filter out system package manager executables
             if any(exec_path.startswith(prefix) for prefix in system_prefixes):
                 if not (exec_path.startswith("/opt") or str(Path.home()) in exec_path):
                     continue
@@ -133,12 +128,10 @@ class SystemScanner:
                 if not exec_p.exists():
                     continue
 
-            # Determine install root folder
             install_dir = exec_p.parent
             if install_dir.name in {"bin", "lib", "libexec", "usr"}:
                 install_dir = install_dir.parent
 
-            # Resolve icon
             icon_path = entry_data.get("icon_raw")
             resolved_icon = None
             if icon_path:
@@ -246,7 +239,6 @@ class SystemScanner:
         if not target.exists():
             return {"error": f"Directory not found: {dir_path}"}
 
-        # If pointing to a single file (like an AppImage)
         if target.is_file():
             slug, ver, disp = self.installer.guess_name_and_version(target.name)
             icon = self.find_system_icon(slug)
@@ -267,12 +259,10 @@ class SystemScanner:
         folder_name = target.name
         slug, guessed_ver, disp_name = self.installer.guess_name_and_version(folder_name)
 
-        # 1. Scan executables & icons inside directory
         candidates = self.installer.scan_directory_candidates(target, slug)
         best_exec = candidates["executables"][0]["full_path"] if candidates["executables"] else None
         best_icon = candidates["icons"][0]["full_path"] if candidates["icons"] else None
 
-        # 2. Check if a matching .desktop file exists on system
         matching_desktop = None
         for d in DEFAULT_DESKTOP_DIR.glob("*.desktop"):
             if slug in d.name.lower() or folder_name.lower() in d.name.lower():
@@ -286,11 +276,9 @@ class SystemScanner:
             if not best_icon and matching_desktop.get("icon_raw"):
                 best_icon = self.find_system_icon(matching_desktop["icon_raw"])
 
-        # 3. If still no icon, check system icon themes
         if not best_icon:
             best_icon = self.find_system_icon(slug) or self.find_system_icon(folder_name)
 
-        # 4. Determine category
         category = "Utility"
         lower_slug = slug.lower()
         if any(k in lower_slug for k in ["ide", "code", "studio", "dev", "git", "pycharm", "clion", "rust", "nvim", "vim", "sublime", "quarto", "cytoscape"]):
@@ -304,7 +292,6 @@ class SystemScanner:
         elif any(k in lower_slug for k in ["game", "steam", "emu", "retro", "minecraft"]):
             category = "Game"
 
-        # Calculate directory size
         calc_size = 0
         try:
             calc_size = sum(f.stat().st_size for f in target.rglob('*') if f.is_file() and not f.is_symlink())
@@ -338,7 +325,6 @@ class SystemScanner:
         discovered: List[Dict[str, Any]] = []
         seen_paths: Set[str] = set()
 
-        # 1. Discover from ~/.local/share/applications .desktop files
         desktop_candidates = self.scan_desktop_entries()
         for cand in desktop_candidates:
             inst_p = str(Path(cand["install_path"]).resolve())
@@ -367,7 +353,6 @@ class SystemScanner:
             cand["needs_sudo"] = needs_sudo
             discovered.append(cand)
 
-        # 2. Discover from standard search roots (/opt, ~/.local/opt, ~/Applications, etc.)
         ignored_dir_names = {
             "containerd", "stacks", "node_modules", "__pycache__", ".trash", "lost+found",
             "hidden", "temp", "tmp", "logs", "cache", ".git", ".local", "dist-packages", "site-packages"
@@ -412,7 +397,6 @@ class SystemScanner:
             except PermissionError:
                 pass
 
-        # 3. Discover uninstalled .tar.gz archives in ~/Downloads
         downloads_dir = Path.home() / "Downloads"
         if downloads_dir.exists():
             for archive in downloads_dir.glob("*.tar.gz"):
@@ -437,5 +421,11 @@ class SystemScanner:
                         "is_tarball_archive": True,
                         "discovery_reason": "Found in ~/Downloads"
                     })
+
+        ignored_keys = {row["key"] for row in self.db.list_ignored_discoveries()}
+        for item in discovered:
+            key = item.get("archive_path") or item.get("install_path")
+            item["ignore_key"] = key
+            item["ignored"] = key in ignored_keys
 
         return discovered

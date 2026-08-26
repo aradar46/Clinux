@@ -14,7 +14,6 @@ import threading
 import subprocess
 from pathlib import Path
 
-# Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).parent.resolve()))
 
 from targz_manager.db import Database, DEFAULT_DB_PATH
@@ -131,23 +130,17 @@ Examples:
     parser.add_argument("--db", type=str, default=None, help="Custom SQLite database file path")
     parser.add_argument("--install-desktop-entry", action="store_true", help="Install desktop shortcut for TarGz Manager itself")
 
-    # CLI subcommands
     subparsers = parser.add_subparsers(dest="command", help="CLI commands (optional)")
 
-    # list
     subparsers.add_parser("list", help="List all managed applications")
 
-    # scan
     subparsers.add_parser("scan", help="Scan system for unmanaged manual apps and tarballs")
 
-    # import-discovered
     subparsers.add_parser("import-discovered", help="Scan and automatically import all unmanaged apps into database")
 
-    # inspect
     p_inspect = subparsers.add_parser("inspect", help="Inspect a tarball archive")
     p_inspect.add_argument("archive", help="Path to archive file (.tar.gz, .tgz, .tar.xz, .zip)")
 
-    # install
     p_install = subparsers.add_parser("install", help="Install an application from tarball")
     p_install.add_argument("archive", help="Path to archive file")
     p_install.add_argument("--name", help="Custom app slug name")
@@ -158,24 +151,20 @@ Examples:
     p_install.add_argument("--no-desktop", action="store_true", help="Do not create .desktop shortcut")
     p_install.add_argument("--no-symlink", action="store_true", help="Do not create ~/.local/bin symlink")
 
-    # update
     p_update = subparsers.add_parser("update", help="Update existing app with new tarball")
     p_update.add_argument("app_id_or_name", help="App ID or slug name")
     p_update.add_argument("archive", help="Path to new archive file")
     p_update.add_argument("--version", help="New version string")
 
-    # remove
     p_remove = subparsers.add_parser("remove", help="Uninstall application")
     p_remove.add_argument("app_id_or_name", help="App ID or slug name")
     p_remove.add_argument("--keep-files", action="store_true", help="Unregister only, keep files on disk")
 
-    # launch
     p_launch = subparsers.add_parser("launch", help="Launch an application")
     p_launch.add_argument("app_id_or_name", help="App ID or slug name")
 
     args = parser.parse_args()
 
-    # Handle desktop shortcut creation
     if args.install_desktop_entry:
         install_desktop_shortcut_for_manager()
         if not args.command:
@@ -188,7 +177,6 @@ Examples:
     from targz_manager.scanner import SystemScanner
     scanner = SystemScanner(db, installer)
 
-    # Handle CLI subcommands if specified
     if args.command == "list":
         apps = db.list_apps()
         print_cli_table(apps)
@@ -286,7 +274,7 @@ Examples:
             name = args.name or insp["guessed_name"]
             disp_name = args.display_name or insp["guessed_display_name"]
             ver = args.version or insp["guessed_version"]
-            
+
             print(f"Installing {disp_name} (v{ver})...")
             app = installer.install_app(
                 archive_path=args.archive,
@@ -373,12 +361,10 @@ Examples:
         print(f"✓ Launched {app['display_name']}.")
         return
 
-    # Default Mode: Start Web Server and Open Browser
     target_port = args.port or 8421
     host = args.host
     url = f"http://{host}:{target_port}/"
 
-    # Single-instance detection: if already running, open tab and exit launcher
     if check_server_running(host, target_port):
         print(f"✓ TarGz Manager is already running at {url}. Opening browser tab...")
         if not args.no_browser:

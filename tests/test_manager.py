@@ -9,7 +9,6 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-# Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -25,23 +24,19 @@ class TestTarGzManager(unittest.TestCase):
         self.db = Database(self.db_path)
         self.installer = Installer(self.db)
 
-        # Create dummy archives for testing
         self.sample_app_dir = self.temp_dir / "sample-app-1.0.0"
         self.sample_app_dir.mkdir()
         (self.sample_app_dir / "bin").mkdir()
-        
-        # Executable binary / script
+
         exec_file = self.sample_app_dir / "bin" / "sampleapp"
         with open(exec_file, "w") as f:
             f.write("#!/bin/sh\necho 'Running sampleapp v1.0.0'\n")
         exec_file.chmod(0o755)
 
-        # Dummy icon
         icon_file = self.sample_app_dir / "icon.png"
         with open(icon_file, "wb") as f:
             f.write(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82")
 
-        # Package into tar.gz
         self.tar_gz_path = self.temp_dir / "sample-app-1.0.0-linux-x64.tar.gz"
         shutil.make_archive(
             str(self.temp_dir / "sample-app-1.0.0-linux-x64"),
@@ -50,7 +45,6 @@ class TestTarGzManager(unittest.TestCase):
             base_dir="sample-app-1.0.0"
         )
 
-        # Create version 2.0.0 tar.gz for update test
         self.sample_app_v2 = self.temp_dir / "sample-app-2.0.0"
         self.sample_app_v2.mkdir()
         (self.sample_app_v2 / "bin").mkdir()
@@ -71,10 +65,8 @@ class TestTarGzManager(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_database_crud_and_stats(self):
-        # Initial empty
         self.assertEqual(len(self.db.list_apps()), 0)
 
-        # Add app
         app_id = self.db.add_app({
             "name": "test-app",
             "display_name": "Test Application",
@@ -82,29 +74,25 @@ class TestTarGzManager(unittest.TestCase):
             "category": "Development",
             "install_path": str(self.temp_dir / "installed" / "test-app"),
             "executable_path": str(self.temp_dir / "installed" / "test-app" / "bin" / "testapp"),
-            "size_bytes": 1024 * 1024 * 10, # 10 MB
+            "size_bytes": 1024 * 1024 * 10,
         })
         self.assertTrue(app_id > 0)
 
-        # Read app
         app = self.db.get_app(app_id)
         self.assertEqual(app["name"], "test-app")
         self.assertEqual(app["display_name"], "Test Application")
         self.assertEqual(app["version"], "1.0.0")
 
-        # Update app
         updated = self.db.update_app(app_id, {"version": "1.1.0", "display_name": "Test App Updated"})
         self.assertTrue(updated)
         app = self.db.get_app(app_id)
         self.assertEqual(app["version"], "1.1.0")
         self.assertEqual(app["display_name"], "Test App Updated")
 
-        # Stats
         stats = self.db.get_stats()
         self.assertEqual(stats["total_apps"], 1)
         self.assertIn("Development", stats["categories"])
 
-        # Delete app
         deleted = self.db.delete_app(app_id)
         self.assertTrue(deleted)
         self.assertEqual(len(self.db.list_apps()), 0)
@@ -122,7 +110,6 @@ class TestTarGzManager(unittest.TestCase):
     def test_install_update_and_uninstall_lifecycle(self):
         dest_path = self.temp_dir / "opt" / "sample-app"
 
-        # 1. Install
         app = self.installer.install_app(
             archive_path=str(self.tar_gz_path),
             name="sample-app",
@@ -141,7 +128,6 @@ class TestTarGzManager(unittest.TestCase):
         self.assertTrue(Path(app["desktop_entry_path"]).exists())
         self.assertTrue(Path(app["symlink_path"]).exists())
 
-        # 2. Update to v2.0.0
         updated_app = self.installer.update_app(
             app_id=app["id"],
             archive_path=str(self.tar_gz_v2_path),
@@ -152,12 +138,10 @@ class TestTarGzManager(unittest.TestCase):
         self.assertTrue(dest_path.exists())
         self.assertTrue((dest_path / "bin" / "sampleapp").exists())
 
-        # Check content of updated executable
         with open(dest_path / "bin" / "sampleapp", "r") as f:
             content = f.read()
         self.assertIn("v2.0.0", content)
 
-        # 3. Uninstall
         uninst_res = self.installer.uninstall_app(
             app_id=app["id"],
             delete_files=True,
@@ -171,7 +155,6 @@ class TestTarGzManager(unittest.TestCase):
         self.assertIsNone(self.db.get_app(app["id"]))
 
     def test_register_existing_app(self):
-        # Register a folder that is already on disk
         app = self.installer.register_existing_app(
             name="existing-app",
             display_name="Existing App",
@@ -187,10 +170,9 @@ class TestTarGzManager(unittest.TestCase):
         self.assertTrue(Path(app["desktop_entry_path"]).exists())
         self.assertTrue(Path(app["symlink_path"]).exists())
 
-        # Clean up registered app
         self.installer.uninstall_app(
             app_id=app["id"],
-            delete_files=False, # Keep original files
+            delete_files=False,
             delete_desktop=True,
             delete_symlink=True
         )
@@ -199,14 +181,12 @@ class TestTarGzManager(unittest.TestCase):
         from targz_manager.scanner import SystemScanner
         scanner = SystemScanner(self.db, self.installer)
 
-        # Test auto resolve directory
         resolved = scanner.auto_resolve_directory(str(self.sample_app_dir))
         self.assertEqual(resolved["name"], "sample-app")
         self.assertEqual(resolved["version"], "1.0.0")
         self.assertTrue(resolved["executable_path"].endswith("sampleapp"))
         self.assertTrue(resolved["icon_path"].endswith("icon.png"))
 
-        # Test discover
         discovered = scanner.discover_unmanaged_apps()
         self.assertTrue(isinstance(discovered, list))
 
@@ -218,10 +198,10 @@ class TestHttpServerApi(unittest.TestCase):
         cls.db_path = cls.temp_dir / "api_test.db"
         cls.db = Database(cls.db_path)
         cls.installer = Installer(cls.db)
-        
+
         cls.port = 8499
         cls.server = create_server(host="127.0.0.1", port=cls.port, installer=cls.installer)
-        
+
         import threading
         cls.server_thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.server_thread.start()
@@ -243,13 +223,11 @@ class TestHttpServerApi(unittest.TestCase):
             self.assertIn("Install Tarball", content)
 
     def test_get_stats_and_system_info(self):
-        # Stats
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/stats") as resp:
             data = json.loads(resp.read().decode('utf-8'))
             self.assertIn("stats", data)
             self.assertEqual(data["stats"]["total_apps"], 0)
 
-        # System info
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/system-info") as resp:
             data = json.loads(resp.read().decode('utf-8'))
             self.assertIn("home", data)

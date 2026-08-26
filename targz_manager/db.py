@@ -17,7 +17,7 @@ class Database:
         else:
             self.db_path = Path(db_path)
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         self.init_db()
 
     @contextmanager
@@ -51,7 +51,20 @@ class Database:
                 terminal INTEGER DEFAULT 0,
                 installed_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                notes TEXT
+                notes TEXT,
+                ignored INTEGER DEFAULT 0
+            );
+            """)
+            try:
+                cursor.execute("ALTER TABLE apps ADD COLUMN ignored INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ignored_discoveries (
+                key TEXT PRIMARY KEY,
+                display_name TEXT,
+                ignored_at TEXT NOT NULL
             );
             """)
             conn.commit()
@@ -160,7 +173,7 @@ class Database:
             "display_name", "version", "description", "category",
             "install_path", "executable_path", "symlink_path", "desktop_entry_path",
             "icon_path", "source_type", "source_path", "size_bytes", "terminal",
-            "updated_at", "notes"
+            "updated_at", "notes", "ignored"
         }
 
         fields = []
@@ -168,7 +181,7 @@ class Database:
         for k, v in updates.items():
             if k in allowed_fields:
                 fields.append(f"{k} = ?")
-                if k == "terminal":
+                if k in ("terminal", "ignored"):
                     values.append(1 if v else 0)
                 else:
                     values.append(v)
@@ -195,6 +208,28 @@ class Database:
             cursor.execute("DELETE FROM apps WHERE id = ?", (app_id,))
             conn.commit()
             return cursor.rowcount > 0
+
+    def ignore_discovery(self, key: str, display_name: str = "") -> None:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR REPLACE INTO ignored_discoveries (key, display_name, ignored_at) VALUES (?, ?, ?)",
+                (key, display_name, datetime.datetime.now().isoformat())
+            )
+            conn.commit()
+
+    def unignore_discovery(self, key: str) -> bool:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM ignored_discoveries WHERE key = ?", (key,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def list_ignored_discoveries(self) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM ignored_discoveries ORDER BY ignored_at DESC")
+            return [dict(row) for row in cursor.fetchall()]
 
     def get_stats(self) -> Dict[str, Any]:
         with self._get_connection() as conn:
@@ -246,7 +281,6 @@ class Database:
         desktop_exists = desktop_path.exists() if desktop_path else False
         icon_exists = icon_path.exists() if icon_path else False
 
-        # Compute dynamic disk size if installed directory exists
         current_size = data.get("size_bytes", 0)
         if install_exists:
             try:
@@ -256,7 +290,6 @@ class Database:
             except Exception:
                 pass
 
-        # Health status
         if not install_exists:
             status = "missing_directory"
             status_message = "Installation directory not found"

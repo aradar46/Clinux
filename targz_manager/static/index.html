@@ -91,6 +91,9 @@
         <button class="pill-btn pill-btn-sparkle" id="discoveredTabPill" onclick="app.setTab('discovered')" style="display:none;">
           Discovered (<span id="pillDiscoveredCount">0</span>)
         </button>
+        <button class="pill-btn" id="tabIgnored" onclick="app.setTab('ignored')">
+          Ignored (<span id="countIgnored">0</span>)
+        </button>
       </div>
 
       <div class="view-sort-controls">
@@ -115,11 +118,11 @@
     <!-- Empty State -->
     <div id="emptyState" class="empty-state" style="display:none;">
       <svg class="empty-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-      <h3 class="empty-title">No Applications Managed Yet</h3>
-      <p class="empty-desc">
+      <h3 class="empty-title" id="emptyStateTitle">No Applications Managed Yet</h3>
+      <p class="empty-desc" id="emptyStateDesc">
         Install a <code>.tar.gz</code> / <code>.tar.xz</code> binary archive or register apps you already extracted by hand to organize them, generate desktop shortcuts, and manage clean upgrades & removals.
       </p>
-      <div class="empty-actions">
+      <div class="empty-actions" id="emptyStateActions">
         <button class="btn btn-primary" onclick="app.openInstallWizard()">
           <svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Install from Tarball

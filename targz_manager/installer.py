@@ -24,7 +24,6 @@ class ArchiveError(Exception):
 class Installer:
     def __init__(self, db: Optional[Database] = None):
         self.db = db or Database()
-        # Ensure standard directories exist
         DEFAULT_OPT_DIR.mkdir(parents=True, exist_ok=True)
         DEFAULT_BIN_DIR.mkdir(parents=True, exist_ok=True)
         DEFAULT_DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
@@ -100,10 +99,8 @@ class Installer:
                 base = base[:-len(ext)]
                 break
 
-        # Common arch/os suffixes to clean
         clean_base = re.sub(r'[-_](linux|x86_64|x64|amd64|arm64|aarch64|i386|i686|64bit|32bit|portable|release|bin|bundle|appimage)', '', base, flags=re.IGNORECASE)
 
-        # Version matching (e.g. -1.2.3 or _v1.0.0 or .1.0.0)
         ver_match = re.search(r'[-_.]v?(\d+(\.\d+)+([-_.]\w+)?)', clean_base)
         if ver_match:
             version = ver_match.group(1).lstrip('v')
@@ -115,7 +112,6 @@ class Installer:
         if not name:
             name = base
 
-        # Capitalize nicely for display
         display_name = name.replace('-', ' ').replace('_', ' ').title()
         return name, version, display_name
 
@@ -160,7 +156,6 @@ class Installer:
 
         total_uncompressed_size = sum(m["size"] for m in members)
 
-        # Detect single top-level directory (wrapper folder)
         root_prefixes = set()
         for m in members:
             parts = m["name"].split('/')
@@ -171,12 +166,10 @@ class Installer:
         has_wrapper = False
         if len(root_prefixes) == 1:
             candidate = list(root_prefixes)[0]
-            # Check if majority of members start with this prefix
             if len([m for m in members if m["name"].startswith(candidate + '/') or m["name"] == candidate]) == len(members):
                 single_root = candidate
                 has_wrapper = True
 
-        # If single root is a good name, refine guessed name
         if single_root:
             r_name, r_ver, r_disp = self.guess_name_and_version(single_root)
             if r_name and len(r_name) > 1:
@@ -184,7 +177,6 @@ class Installer:
                 version = r_ver or version
                 display_name = r_disp
 
-        # Find executable candidates & icon candidates
         executables = []
         icons = []
 
@@ -192,7 +184,6 @@ class Installer:
             if m["is_dir"]:
                 continue
             m_name = m["name"]
-            # Relative path if wrapper is stripped
             rel_name = m_name
             if has_wrapper and single_root and m_name.startswith(single_root + '/'):
                 rel_name = m_name[len(single_root) + 1:]
@@ -201,12 +192,10 @@ class Installer:
             lower_name = filename.lower()
             lower_rel = rel_name.lower()
 
-            # Executable scoring
             mode = m.get("mode", 0)
             is_exec_mode = bool(mode & 0o111) if mode else False
             score = 0
 
-            # Filter out non-executables like docs, assets, .so, .txt, etc.
             ignored_exts = {'.txt', '.md', '.html', '.css', '.js', '.json', '.xml', '.png', '.jpg', '.svg', '.so', '.a', '.h', '.c', '.cpp', '.pyc', '.mo', '.po', '.desktop', '.man', '.1', '.gz', '.zip'}
             ext = Path(filename).suffix.lower()
 
@@ -233,7 +222,6 @@ class Installer:
                         "size": m["size"]
                     })
 
-            # Icon scoring
             if ext in {'.png', '.svg', '.ico', '.xpm'}:
                 icon_score = 10
                 if any(k in lower_rel for k in ['icon', 'logo', 'pixmap', 'hicolor', 'scalable']):
@@ -279,7 +267,6 @@ class Installer:
                 if name.startswith(strip_prefix + '/'):
                     name = name[len(strip_prefix) + 1:]
                 else:
-                    # Not inside wrapper, extract anyway or keep
                     pass
 
             target_path = (dest_dir / name).resolve()
@@ -288,21 +275,18 @@ class Installer:
             except ValueError:
                 raise ArchiveError(f"Malicious member path traversal attempt: {member.name}")
 
-            # Safe extraction
             if member.isdir():
                 target_path.mkdir(parents=True, exist_ok=True)
             elif member.isfile() or member.isreg():
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 with tf.extractfile(member) as src, open(target_path, 'wb') as dst:
                     shutil.copyfileobj(src, dst)
-                # Preserve permissions
                 try:
                     target_path.chmod(member.mode & 0o777)
                 except Exception:
                     pass
             elif member.issym():
                 target_path.parent.mkdir(parents=True, exist_ok=True)
-                # Symlinks inside archive
                 if target_path.is_symlink() or target_path.exists():
                     try:
                         target_path.unlink()
@@ -339,7 +323,6 @@ class Installer:
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, open(target_path, 'wb') as dst:
                     shutil.copyfileobj(src, dst)
-                # Preserve permissions if present in external_attr
                 mode = info.external_attr >> 16
                 if mode:
                     try:
@@ -381,11 +364,9 @@ class Installer:
             '.dylib', '.dll', '.tmp', '.lock', '.history', '.condarc', '.ini', '.cfg'
         }
 
-        # Subdirectories to avoid when searching for main binaries
         ignored_subdirs = {'include', 'man', 'doc', 'docs', 'locales', 'node_modules', '__pycache__', '.git', '.trash'}
 
         for root, dirs, files in os.walk(str(directory)):
-            # Prune ignored subdirs from traversal
             dirs[:] = [d for d in dirs if d not in ignored_subdirs and not d.startswith('.')]
 
             rel_root = os.path.relpath(root, str(directory))
@@ -402,11 +383,9 @@ class Installer:
                 lower_name = file.lower()
                 lower_rel = rel_path.lower()
 
-                # Ignore shared library patterns like libfoo.so.1.2.3
                 if '.so' in lower_name or lower_name.startswith('lib') and (ext in {'.so', '.a', '.dylib', '.dll'} or '.so.' in lower_name):
                     continue
 
-                # Check executable
                 if ext not in ignored_exts:
                     score = 0
                     is_exec_bit = False
@@ -417,7 +396,6 @@ class Installer:
                         st = full_path.stat()
                         is_exec_bit = bool(st.st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
 
-                        # Check ELF magic bytes or shebang
                         with open(full_path, 'rb') as f:
                             magic = f.read(4)
                             if magic.startswith(b'\x7fELF'):
@@ -435,7 +413,6 @@ class Installer:
                         score += 30
 
                     if score > 0 or is_elf or is_script:
-                        # Bonus scores for match
                         if app_name and app_name.lower() in lower_name:
                             score += 60
                         if rel_root in {'bin', 'usr/bin'}:
@@ -445,7 +422,6 @@ class Installer:
                         if ext in {'.sh', '.bin', '.appimage'}:
                             score += 20
 
-                        # Penalize helper binaries in deep lib/ or support dirs
                         if any(part in rel_root.split(os.sep) for part in {'lib', 'lib64', 'libexec', 'formats', 'resources', 'share'}):
                             score -= 40
                         if any(k in lower_name for k in {'crashpad', 'sandbox', 'helper', 'daemon', 'updater', 'install'}):
@@ -461,7 +437,6 @@ class Installer:
                                 "size": full_path.stat().st_size
                             })
 
-                # Check icons
                 if ext in {'.png', '.svg', '.ico', '.xpm'}:
                     icon_score = 10
                     if any(k in lower_name for k in ['icon', 'logo', 'app']):
@@ -521,13 +496,11 @@ class Installer:
         with open(desktop_file, 'w', encoding='utf-8') as f:
             f.write('\n'.join(content) + '\n')
 
-        # Make executable
         try:
             desktop_file.chmod(0o755)
         except Exception:
             pass
 
-        # Update desktop database
         try:
             subprocess.run(["update-desktop-database", str(DEFAULT_DESKTOP_DIR)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
@@ -556,7 +529,6 @@ class Installer:
         if link_path.is_symlink() or link_path.exists():
             link_path.unlink()
 
-        # Ensure target executable has execute permissions
         try:
             target = Path(exec_path)
             if target.exists():
@@ -601,17 +573,14 @@ class Installer:
         if not slug:
             raise ArchiveError("Invalid application name")
 
-        # Destination directory
         target_dir = Path(install_path) if install_path else (DEFAULT_OPT_DIR / slug)
         target_dir = target_dir.resolve()
 
         if target_dir.exists() and any(target_dir.iterdir()):
             raise ArchiveError(f"Install directory already exists and is not empty: {target_dir}")
 
-        # Extract
         self.extract_archive(archive_path, target_dir, flatten_wrapper=flatten_wrapper)
 
-        # Resolve executable
         if executable_rel_path:
             exec_full = (target_dir / executable_rel_path).resolve()
         else:
@@ -623,14 +592,12 @@ class Installer:
         if not exec_full.exists():
             raise ArchiveError(f"Specified executable does not exist: {exec_full}")
 
-        # Ensure executable bit
         try:
             st = exec_full.stat()
             exec_full.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         except Exception:
             pass
 
-        # Resolve icon
         icon_full_str = None
         if icon_rel_path:
             cand_icon = (target_dir / icon_rel_path).resolve()
@@ -641,13 +608,11 @@ class Installer:
             if candidates["icons"]:
                 icon_full_str = candidates["icons"][0]["full_path"]
 
-        # Calculate disk size
         calc_size = sum(f.stat().st_size for f in target_dir.rglob('*') if f.is_file() and not f.is_symlink())
 
         disp_name = display_name or slug.replace('-', ' ').title()
         ver = version or "1.0.0"
 
-        # Desktop entry
         desktop_path = None
         if create_desktop:
             desktop_path = self.create_desktop_entry(
@@ -660,12 +625,10 @@ class Installer:
                 comment=description
             )
 
-        # Symlink
         symlink_path = None
         if create_bin_symlink:
             symlink_path = self.create_symlink(str(exec_full), slug)
 
-        # Database record
         app_data = {
             "name": slug,
             "display_name": disp_name,
@@ -712,7 +675,6 @@ class Installer:
         if not exec_full.exists():
             raise ArchiveError(f"Executable does not exist: {exec_full}")
 
-        # Ensure executable bit
         try:
             st = exec_full.stat()
             exec_full.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -794,10 +756,8 @@ class Installer:
             shutil.rmtree(backup_dir, ignore_errors=True)
 
         try:
-            # 1. Extract new version into staging directory
             self.extract_archive(archive_path, staging_dir, flatten_wrapper=flatten_wrapper)
 
-            # 2. Identify new executable
             new_exec_path = None
             if executable_rel_path:
                 cand = (staging_dir / executable_rel_path).resolve()
@@ -805,7 +765,6 @@ class Installer:
                     new_exec_path = cand
 
             if not new_exec_path:
-                # Try same relative path as previous executable
                 try:
                     old_rel = Path(app["executable_path"]).relative_to(install_path)
                     cand = (staging_dir / old_rel).resolve()
@@ -822,40 +781,33 @@ class Installer:
             if not new_exec_path or not new_exec_path.exists():
                 raise ArchiveError("Could not locate executable in the new archive version.")
 
-            # Make new executable runnable
             st = new_exec_path.stat()
             new_exec_path.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
-            # Calculate relative path of new executable to install_path
             rel_exec = new_exec_path.relative_to(staging_dir)
             final_exec_path = install_path / rel_exec
 
-            # Find new icon if available
             cand_icons = self.scan_directory_candidates(staging_dir, app["name"])
             new_icon_path = app["icon_path"]
             if cand_icons["icons"]:
                 new_icon_rel = Path(cand_icons["icons"][0]["full_path"]).relative_to(staging_dir)
                 new_icon_path = str(install_path / new_icon_rel)
 
-            # 3. Atomic swap: install_path -> backup_dir, staging_dir -> install_path
             if install_path.exists():
                 self.run_elevated_mv(install_path, backup_dir)
 
             self.run_elevated_mv(staging_dir, install_path)
 
-            # Clean up backup
             if backup_dir.exists():
                 self.run_elevated_rm(backup_dir)
 
         except Exception as e:
-            # Rollback if failed
             if staging_dir.exists():
                 self.run_elevated_rm(staging_dir)
             if backup_dir.exists() and not install_path.exists():
                 self.run_elevated_mv(backup_dir, install_path)
             raise ArchiveError(f"Upgrade failed, restored previous state: {e}")
 
-        # Update shortcuts & symlinks
         desktop_entry_path = app["desktop_entry_path"]
         if desktop_entry_path and Path(desktop_entry_path).exists():
             desktop_entry_path = self.create_desktop_entry(
@@ -872,20 +824,17 @@ class Installer:
         if symlink_path:
             symlink_path = self.create_symlink(str(final_exec_path), app["name"])
 
-        # Calculate new size
         calc_size = 0
         try:
             calc_size = sum(f.stat().st_size for f in install_path.rglob('*') if f.is_file() and not f.is_symlink())
         except Exception:
             pass
 
-        # Determine version
         ver = new_version
         if not ver:
             _, g_ver, _ = self.guess_name_and_version(Path(archive_path).name)
             ver = g_ver or app["version"]
 
-        # Update database
         self.db.update_app(app_id, {
             "version": ver,
             "executable_path": str(final_exec_path),
@@ -913,7 +862,6 @@ class Installer:
         removed_items = []
         bytes_freed = app.get("size_bytes", 0)
 
-        # 1. Remove install files
         if delete_files:
             install_path = Path(app["install_path"])
             if install_path.exists():
@@ -923,17 +871,14 @@ class Installer:
                 except Exception as e:
                     raise ArchiveError(f"Failed to delete install directory: {e}")
 
-        # 2. Remove desktop shortcut
         if delete_desktop and app.get("desktop_entry_path"):
             self.remove_desktop_entry(app["desktop_entry_path"])
             removed_items.append(f"Desktop shortcut: {app['desktop_entry_path']}")
 
-        # 3. Remove symlink
         if delete_symlink and app.get("symlink_path"):
             self.remove_symlink(app["symlink_path"])
             removed_items.append(f"Symlink: {app['symlink_path']}")
 
-        # 4. Remove database row
         self.db.delete_app(app_id)
 
         return {
@@ -953,20 +898,17 @@ class Installer:
         if not exec_path.exists():
             raise ArchiveError(f"Executable not found at: {exec_path}")
 
-        # Ensure executable
         try:
             st = exec_path.stat()
             exec_path.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         except Exception:
             pass
 
-        # Spawn detached process
         working_dir = Path(app["install_path"])
         if not working_dir.exists():
             working_dir = exec_path.parent
 
         if app.get("terminal"):
-            # Launch inside x-terminal-emulator if possible
             cmd = ["x-terminal-emulator", "-e", str(exec_path)]
             try:
                 subprocess.Popen(cmd, cwd=str(working_dir), start_new_session=True)

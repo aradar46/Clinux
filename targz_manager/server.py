@@ -50,7 +50,6 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     def record_disconnect(self, client_id: str = "default"):
         self.active_clients.discard(client_id)
         if not self.active_clients:
-            # Force timeout shortly if no other client active
             self.last_heartbeat = time.time() - (self.shutdown_timeout - 1.2)
 
     def _start_watchdog(self):
@@ -64,7 +63,6 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
                         threading.Thread(target=self.shutdown, daemon=True).start()
                         break
                 else:
-                    # Initial grace period: if no browser connects within 90s, shut down
                     if now - self.start_time > 90.0:
                         self.running = False
                         threading.Thread(target=self.shutdown, daemon=True).start()
@@ -82,7 +80,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         super().__init__(*args, **kwargs)
 
     def log_message(self, format, *args):
-        # Clean logging
         sys.stderr.write(f"[{self.log_date_time_string()}] {self.command} {self.path} - {format % args}\n")
 
     def _send_json(self, data: Any, status: int = 200):
@@ -121,7 +118,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
 
-        # API Endpoints
         if path == '/api/apps':
             search = query.get('search', [None])[0]
             category = query.get('category', [None])[0]
@@ -194,7 +190,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._handle_browse(query)
             return
 
-        # Serve static files
         if path == '/' or path == '/index.html':
             self._serve_file(STATIC_DIR / "index.html", "text/html")
         else:
@@ -227,7 +222,7 @@ class AppRequestHandler(BaseHTTPRequestHandler):
 
     def _handle_browse(self, query: Dict[str, list]):
         raw_path = query.get('path', [str(Path.home())])[0]
-        mode = query.get('mode', ['all'])[0]  # 'all', 'archive', 'executable', 'dir'
+        mode = query.get('mode', ['all'])[0]
 
         target = Path(raw_path).expanduser().resolve()
         if not target.exists():
@@ -259,7 +254,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                     except Exception:
                         pass
 
-                # Filter based on mode
                 if mode == 'dir' and not is_dir:
                     continue
                 elif mode == 'archive' and not (is_dir or is_archive):
@@ -295,7 +289,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             {"name": "System Opt (/opt)", "path": "/opt"},
             {"name": "Current Dir", "path": str(Path.cwd())}
         ]
-        # Keep only existing quicklinks
         quick_links = [ql for ql in quick_links if Path(ql["path"]).exists()]
 
         self._send_json({
@@ -310,7 +303,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
-        # File upload handler (multipart/form-data)
         if path == '/api/upload':
             self._handle_upload()
             return
@@ -353,9 +345,7 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(res)
 
             elif path == '/api/discovered/add':
-                # 1-click import of a discovered app or tarball
                 if body.get('is_tarball_archive') and body.get('archive_path'):
-                    # Auto-install tarball
                     insp = self.installer.inspect_archive(body['archive_path'])
                     app = self.installer.install_app(
                         archive_path=body['archive_path'],
@@ -368,7 +358,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                         create_bin_symlink=body.get('create_bin_symlink', True)
                     )
                 else:
-                    # Register existing app
                     app = self.installer.register_existing_app(
                         name=body['name'],
                         install_path=body['install_path'],
@@ -383,6 +372,22 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                         description=body.get('description', '')
                     )
                 self._send_json({"success": True, "app": app})
+
+            elif path == '/api/discovered/ignore':
+                key = body.get('key')
+                if not key:
+                    self._send_error_json("key is required")
+                    return
+                self.db.ignore_discovery(key, body.get('display_name', ''))
+                self._send_json({"success": True})
+
+            elif path == '/api/discovered/unignore':
+                key = body.get('key')
+                if not key:
+                    self._send_error_json("key is required")
+                    return
+                self.db.unignore_discovery(key)
+                self._send_json({"success": True})
 
             elif path == '/api/apps/scan-directory':
                 dir_path = body.get('dir_path')
@@ -456,7 +461,7 @@ class AppRequestHandler(BaseHTTPRequestHandler):
 
             elif path.startswith('/api/apps/') and path.endswith('/toggle-shortcut'):
                 app_id = int(path.split('/')[3])
-                shortcut_type = body.get("type")  # 'desktop' or 'symlink'
+                shortcut_type = body.get("type")
                 enable = body.get("enable", True)
                 app = self.db.get_app(app_id)
                 if not app:
@@ -493,7 +498,7 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 app_id = int(path.split('/')[3])
                 updates = {k: v for k, v in body.items() if k in {
                     "display_name", "version", "description", "category",
-                    "executable_path", "icon_path", "terminal", "notes"
+                    "executable_path", "icon_path", "terminal", "notes", "ignored"
                 }}
                 self.db.update_app(app_id, updates)
                 self._send_json({"success": True, "app": self.db.get_app(app_id)})
@@ -531,7 +536,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
 
         raw_data = self.rfile.read(content_length)
 
-        # Parse multipart body
         delimiter = b'--' + boundary
         parts = raw_data.split(delimiter)
 
@@ -545,7 +549,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 continue
 
             headers_bytes, content_bytes = part.split(b'\r\n\r\n', 1)
-            # Remove trailing \r\n from content
             if content_bytes.endswith(b'\r\n'):
                 content_bytes = content_bytes[:-2]
 

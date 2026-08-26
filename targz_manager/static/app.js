@@ -7,7 +7,6 @@ class TarGzApp {
   constructor() {
     this.apps = [];
     this.discoveredApps = [];
-    this.dismissedDiscovered = new Set();
     this.stats = {};
     this.systemInfo = {};
     this.currentTab = 'all';
@@ -165,7 +164,8 @@ class TarGzApp {
         const data = await res.json();
         this.apps = data.apps || [];
         const countAll = document.getElementById('countAllApps');
-        if (countAll) countAll.innerText = this.apps.length;
+        if (countAll) countAll.innerText = this.apps.filter(a => !a.ignored).length;
+        this.updateIgnoredCount();
         this.renderApps();
       }
     } catch (e) {
@@ -203,6 +203,7 @@ class TarGzApp {
         const data = await res.json();
         this.discoveredApps = data.discovered || [];
         this.renderDiscoveredBanner();
+        this.updateIgnoredCount();
       }
     } catch (e) {
       console.error('Discovery fetch error:', e);
@@ -238,7 +239,13 @@ class TarGzApp {
   }
 
   getActiveDiscovered() {
-    return this.discoveredApps.filter((_, idx) => !this.dismissedDiscovered.has(idx));
+    return this.discoveredApps.filter(item => !item.ignored);
+  }
+
+  updateIgnoredCount() {
+    const count = this.apps.filter(a => a.ignored).length + this.discoveredApps.filter(d => d.ignored).length;
+    const el = document.getElementById('countIgnored');
+    if (el) el.innerText = count;
   }
 
   dismissDiscoveredBanner() {
@@ -246,11 +253,62 @@ class TarGzApp {
     if (banner) banner.style.display = 'none';
   }
 
-  dismissSingleDiscovered(index) {
-    this.dismissedDiscovered.add(index);
-    this.renderDiscoveredBanner();
-    this.renderApps();
-    this.toast('Dismissed from suggestions', 'info');
+  async ignoreDiscovered(index) {
+    const item = this.discoveredApps[index];
+    if (!item) return;
+    try {
+      const res = await fetch('/api/discovered/ignore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: item.ignore_key, display_name: item.display_name })
+      });
+      if (res.ok) {
+        item.ignored = true;
+        this.renderDiscoveredBanner();
+        this.updateIgnoredCount();
+        this.renderApps();
+        this.toast('Moved to Ignored', 'info');
+      }
+    } catch (e) {
+      this.toast('Error ignoring item: ' + e.message, 'error');
+    }
+  }
+
+  async unignoreDiscovered(index) {
+    const item = this.discoveredApps[index];
+    if (!item) return;
+    try {
+      const res = await fetch('/api/discovered/unignore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: item.ignore_key })
+      });
+      if (res.ok) {
+        item.ignored = false;
+        this.renderDiscoveredBanner();
+        this.updateIgnoredCount();
+        this.renderApps();
+        this.toast('Restored to Discovered', 'success');
+      }
+    } catch (e) {
+      this.toast('Error restoring item: ' + e.message, 'error');
+    }
+  }
+
+  async toggleIgnoreApp(appId, ignore) {
+    try {
+      const res = await fetch(`/api/apps/${appId}/edit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ignored: ignore })
+      });
+      if (res.ok) {
+        this.toast(ignore ? 'App moved to Ignored' : 'App restored', ignore ? 'info' : 'success');
+        await this.refreshApps();
+      }
+    } catch (e) {
+      this.toast('Error updating app: ' + e.message, 'error');
+    }
   }
 
   async addSingleDiscovered(index) {
@@ -267,7 +325,6 @@ class TarGzApp {
       const data = await res.json();
       if (res.ok && data.success) {
         this.toast(`${data.app.display_name} added to managed apps!`, 'success');
-        this.dismissedDiscovered.add(index);
         await this.refreshApps();
         await this.refreshStats();
         await this.fetchDiscovered();
@@ -286,7 +343,7 @@ class TarGzApp {
     this.toast(`Adding all ${available.length} applications...`, 'info');
     let added = 0;
     for (let i = 0; i < this.discoveredApps.length; i++) {
-      if (this.dismissedDiscovered.has(i)) continue;
+      if (this.discoveredApps[i].ignored) continue;
       const item = this.discoveredApps[i];
       try {
         const res = await fetch('/api/discovered/add', {
@@ -294,10 +351,7 @@ class TarGzApp {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(item)
         });
-        if (res.ok) {
-          added++;
-          this.dismissedDiscovered.add(i);
-        }
+        if (res.ok) added++;
       } catch (e) {}
     }
 
@@ -336,9 +390,11 @@ class TarGzApp {
     this.currentTab = tab;
     const tabAll = document.getElementById('tabAllApps');
     const tabDisc = document.getElementById('discoveredTabPill');
+    const tabIgnored = document.getElementById('tabIgnored');
 
     if (tabAll) tabAll.classList.toggle('active', tab === 'all');
     if (tabDisc) tabDisc.classList.toggle('active', tab === 'discovered');
+    if (tabIgnored) tabIgnored.classList.toggle('active', tab === 'ignored');
 
     this.renderApps();
   }
@@ -353,10 +409,17 @@ class TarGzApp {
       return this.getActiveDiscovered();
     }
 
-    let filtered = [...this.apps];
+    if (this.currentTab === 'ignored') {
+      return [
+        ...this.apps.filter(a => a.ignored),
+        ...this.discoveredApps.filter(d => d.ignored)
+      ];
+    }
+
+    let filtered = this.apps.filter(a => !a.ignored);
     if (this.searchQuery) {
       const q = this.searchQuery.toLowerCase();
-      filtered = filtered.filter(a => 
+      filtered = filtered.filter(a =>
         a.name.toLowerCase().includes(q) ||
         (a.display_name && a.display_name.toLowerCase().includes(q)) ||
         (a.description && a.description.toLowerCase().includes(q))
@@ -376,6 +439,18 @@ class TarGzApp {
     if (!list || list.length === 0) {
       grid.innerHTML = '';
       emptyState.style.display = 'block';
+      const title = document.getElementById('emptyStateTitle');
+      const desc = document.getElementById('emptyStateDesc');
+      const actions = document.getElementById('emptyStateActions');
+      if (this.currentTab === 'ignored') {
+        if (title) title.innerText = 'Nothing Ignored';
+        if (desc) desc.innerText = 'Apps and discovered suggestions you ignore will show up here, and you can restore them anytime.';
+        if (actions) actions.style.display = 'none';
+      } else {
+        if (title) title.innerText = 'No Applications Managed Yet';
+        if (desc) desc.innerHTML = 'Install a <code>.tar.gz</code> / <code>.tar.xz</code> binary archive or register apps you already extracted by hand to organize them, generate desktop shortcuts, and manage clean upgrades & removals.';
+        if (actions) actions.style.display = 'flex';
+      }
       return;
     }
 
@@ -383,9 +458,14 @@ class TarGzApp {
 
     if (this.currentTab === 'discovered') {
       grid.innerHTML = this.discoveredApps.map((item, idx) => {
-        if (this.dismissedDiscovered.has(idx)) return '';
-        return this.renderDiscoveredCard(item, idx);
+        return item.ignored ? '' : this.renderDiscoveredCard(item, idx);
       }).join('');
+    } else if (this.currentTab === 'ignored') {
+      const ignoredAppsHtml = this.apps.filter(a => a.ignored).map(app => this.renderAppCard(app)).join('');
+      const ignoredDiscoveredHtml = this.discoveredApps.map((item, idx) => {
+        return item.ignored ? this.renderDiscoveredCard(item, idx) : '';
+      }).join('');
+      grid.innerHTML = ignoredAppsHtml + ignoredDiscoveredHtml;
     } else {
       grid.innerHTML = list.map(app => this.renderAppCard(app)).join('');
     }
@@ -455,9 +535,10 @@ class TarGzApp {
               <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
               Review
             </button>
-            <button class="btn btn-sm btn-icon" onclick="app.dismissSingleDiscovered(${idx})" title="Dismiss suggestion">
-              ✕
-            </button>
+            ${item.ignored
+              ? `<button class="btn btn-sm btn-secondary" onclick="app.unignoreDiscovered(${idx})" title="Move back to Discovered">Unignore</button>`
+              : `<button class="btn btn-sm btn-icon" onclick="app.ignoreDiscovered(${idx})" title="Ignore this suggestion">✕</button>`
+            }
           </div>
         </div>
       </div>
@@ -547,6 +628,9 @@ class TarGzApp {
             </button>
             <button class="btn btn-sm btn-secondary" onclick="app.openDetailsModal(${app.id})" title="Configure & Edit">
               <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            </button>
+            <button class="btn btn-sm btn-secondary" onclick="app.toggleIgnoreApp(${app.id}, ${app.ignored ? 'false' : 'true'})" title="${app.ignored ? 'Restore from Ignored' : 'Ignore this app'}">
+              <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
             </button>
             <button class="btn btn-sm btn-outline-danger" onclick="app.openUninstallModal(${app.id})" title="Uninstall Application">
               <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
