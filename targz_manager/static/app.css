@@ -46,27 +46,79 @@
 }
 
 [data-theme="light"] {
-  --bg-main: #cbd2dc;
-  --bg-card: #e4e9f0;
-  --bg-card-hover: #dce2eb;
-  --bg-subtle: #d2d9e3;
-  --bg-input: #f2f5f9;
-  --border-color: #94a3b8;
-  --border-strong: #475569;
-  --border-focus: #047857;
+  --bg-main: #f1f3f6;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8fafc;
+  --bg-subtle: #e2e8f0;
+  --bg-input: #ffffff;
+  --border-color: #cbd5e1;
+  --border-strong: #1e293b;
+  --border-focus: #15803d;
 
   --text-primary: #0f172a;
   --text-secondary: #334155;
   --text-muted: #64748b;
 
-  --accent-primary: #059669;
-  --accent-primary-hover: #047857;
+  --accent-primary: #15803d;
+  --accent-primary-hover: #166534;
   --accent-secondary: #0284c7;
+  --accent-emerald: #15803d;
+  --accent-emerald-bg: rgba(21, 128, 61, 0.1);
+  --accent-amber: #b45309;
+  --accent-amber-bg: rgba(180, 83, 9, 0.1);
+  --accent-orange: #c2410c;
+  --accent-orange-hover: #9a3412;
+  --accent-rose: #b91c1c;
+  --accent-rose-bg: rgba(185, 28, 28, 0.1);
 
-  --shadow-sm: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 4px rgba(0,0,0,0.12);
-  --shadow-md: inset 0 1px 0 rgba(255,255,255,0.9), 0 4px 8px rgba(0,0,0,0.15);
-  --shadow-lg: inset 0 1px 0 rgba(255,255,255,1), 0 8px 16px rgba(0,0,0,0.2);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 3px 6px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 16px rgba(0,0,0,0.12);
   --shadow-glow: none;
+}
+
+[data-theme="light"] .btn-primary,
+[data-theme="light"] .btn-success {
+  background: #15803d !important;
+  color: #ffffff !important;
+  border-color: #166534 !important;
+}
+
+[data-theme="light"] .btn-primary:hover,
+[data-theme="light"] .btn-success:hover {
+  background: #166534 !important;
+  border-color: #14532d !important;
+  color: #ffffff !important;
+}
+
+[data-theme="light"] .brand-title::after {
+  color: #15803d !important;
+  background: rgba(21, 128, 61, 0.1) !important;
+  border-color: #15803d !important;
+}
+
+[data-theme="light"] .pill-btn.active {
+  background: rgba(21, 128, 61, 0.12) !important;
+  color: #15803d !important;
+  border-color: #15803d !important;
+}
+
+[data-theme="light"] .nav-task-tab.active {
+  background: #ffffff !important;
+  color: #15803d !important;
+  border-color: #15803d !important;
+  border-bottom: 2px solid #ffffff !important;
+  box-shadow: 0 -3px 0 0 #15803d inset !important;
+}
+
+[data-theme="light"] .app-paths-info {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+}
+
+[data-theme="light"] .app-paths-info code {
+  color: #15803d;
 }
 
 * {
