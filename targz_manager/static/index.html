@@ -71,6 +71,12 @@
         <span class="nav-badge nav-badge-cyan" id="aiSkillsBadge">0</span>
       </button>
 
+      <button class="nav-task-tab" id="taskTabDotfiles" onclick="app.setTab('dotfiles')">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>
+        <span>DOTFILES</span>
+        <span class="nav-badge nav-badge-amber" id="dotfilesBadge" style="display:none;">dirty</span>
+      </button>
+
       <button class="nav-task-tab" id="taskTabDiscovered" onclick="app.setTab('discovered')" style="display:none;">
         <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
         <span>DISCOVERED</span>
@@ -279,6 +285,115 @@
               <!-- Rendered by app.js -->
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dotfiles Control Panel -->
+    <div id="dotfilesView" class="dotfiles-view" style="display:none; flex-direction:column; gap:1.25rem; width:100%;">
+      <!-- Hero / Status Banner -->
+      <div class="cleaner-hero" style="margin-bottom:0;">
+        <div class="cleaner-hero-main">
+          <div class="cleaner-hero-icon-wrapper" style="background:rgba(245,158,11,0.12); color:var(--accent-amber);">
+            <svg class="cleaner-hero-icon" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>
+          </div>
+          <div>
+            <div class="cleaner-hero-badge" style="color:var(--accent-amber);">Dotfiles Manager</div>
+            <div class="cleaner-hero-size" id="dotfilesHeroTitle" style="font-size:1.4rem;">~/.dotfiles</div>
+            <div class="cleaner-hero-desc" id="dotfilesHeroDesc">GNU Stow profile and desktop configuration sync.</div>
+          </div>
+        </div>
+        <div class="cleaner-hero-actions">
+          <button class="btn btn-secondary" onclick="app.fetchDotfilesStatus(true)">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+            Refresh Status
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Actions Grid -->
+      <div class="cleaner-sections" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:1rem;">
+        <div class="cleaner-category-card">
+          <div class="cleaner-cat-header">
+            <div class="cleaner-cat-title">
+              <span class="cleaner-cat-name">Stow & Sync Actions</span>
+            </div>
+          </div>
+          <div style="padding:1.25rem; display:flex; flex-direction:column; gap:1rem;">
+            <div style="display:flex; flex-wrap:wrap; gap:0.6rem;">
+              <button class="btn btn-primary btn-sm" onclick="app.runDotfilesCommand('check')" id="btnDotfilesCheck">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                Preview Links (Check)
+              </button>
+              <button class="btn btn-success btn-sm" onclick="app.runDotfilesCommand('apply')" id="btnDotfilesApply">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                Apply Links (Stow)
+              </button>
+              <button class="btn btn-secondary btn-sm" onclick="app.runDotfilesCommand('update')" id="btnDotfilesUpdate">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+                Pull & Apply (Update)
+              </button>
+            </div>
+
+            <div style="border-top:1px solid var(--border-subtle); padding-top:0.75rem; display:flex; flex-wrap:wrap; gap:0.6rem; align-items:center;">
+              <span style="font-size:0.75rem; font-weight:600; color:var(--text-muted); margin-right:0.4rem;">GNOME:</span>
+              <button class="btn btn-secondary btn-xs" onclick="app.runDotfilesCommand('gnome-out')" title="Export GNOME settings and extensions">
+                Export GNOME (gnome-out)
+              </button>
+              <button class="btn btn-secondary btn-xs" onclick="app.runDotfilesCommand('gnome-in')" title="Import GNOME settings and extensions">
+                Import GNOME (gnome-in)
+              </button>
+            </div>
+
+            <div style="border-top:1px solid var(--border-subtle); padding-top:0.75rem;">
+              <label class="form-label" style="margin-bottom:0.4rem;">Export Desktop State, Commit & Push:</label>
+              <div style="display:flex; gap:0.5rem;">
+                <input type="text" id="dotfilesCommitMsg" class="form-control form-control-sm" placeholder="Commit message (e.g. Update shell aliases)">
+                <button class="btn btn-orange btn-sm" onclick="app.saveDotfiles()" id="btnDotfilesSave">
+                  Save & Push
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cleaner-category-card">
+          <div class="cleaner-cat-header">
+            <div class="cleaner-cat-title">
+              <span class="cleaner-cat-name">Repository Details</span>
+            </div>
+          </div>
+          <div style="padding:1.25rem; display:flex; flex-direction:column; gap:0.75rem; font-size:0.8rem;">
+            <div>
+              <span style="color:var(--text-muted); font-weight:600;">Branch:</span>
+              <span id="dotfilesBranch" style="font-family:var(--font-mono); margin-left:0.5rem;">-</span>
+              <span id="dotfilesGitState" class="ai-agent-tag" style="margin-left:0.4rem;">-</span>
+            </div>
+            <div>
+              <span style="color:var(--text-muted); font-weight:600;">Latest Commit:</span>
+              <div id="dotfilesLastCommit" style="font-family:var(--font-mono); color:var(--text-secondary); margin-top:0.2rem; font-size:0.75rem;">-</div>
+            </div>
+            <div>
+              <span style="color:var(--text-muted); font-weight:600;">Managed Packages:</span>
+              <div id="dotfilesPackagesList" style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.35rem;">
+                <!-- Populated by app.js -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Terminal Output Console -->
+      <div class="cleaner-category-card">
+        <div class="cleaner-cat-header">
+          <div class="cleaner-cat-title">
+            <span class="cleaner-cat-name">Output Console</span>
+            <span id="dotfilesOutputBadge" class="cleaner-cat-count" style="font-family:var(--font-mono);">Ready</span>
+          </div>
+          <button class="btn btn-secondary btn-xs" onclick="app.clearDotfilesConsole()">Clear</button>
+        </div>
+        <div style="padding:1rem; background:var(--bg-card-hover); border-radius:0 0 var(--radius-sm) var(--radius-sm);">
+          <pre id="dotfilesOutputConsole" style="margin:0; font-family:var(--font-mono); font-size:0.75rem; line-height:1.5; color:var(--text-secondary); white-space:pre-wrap; max-height:280px; overflow-y:auto;">Click an action above (such as "Preview Links" or "Apply Links") to view live output.</pre>
         </div>
       </div>
     </div>

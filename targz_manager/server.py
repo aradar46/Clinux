@@ -21,6 +21,7 @@ from .installer import (
 from .scanner import SystemScanner
 from .cleaner import SystemCleaner
 from .ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
+from .dotfiles_manager import DotfilesManager
 
 import time
 import threading
@@ -100,6 +101,7 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         self.cleaner = SystemCleaner()
         self.skill_manager = SkillManager()
         self.ai_storage = AIStorageManager()
+        self.dotfiles_manager = DotfilesManager()
         super().__init__(*args, **kwargs)
 
     def log_message(self, format, *args):
@@ -261,6 +263,11 @@ class AppRequestHandler(BaseHTTPRequestHandler):
 
         elif path == '/api/ai/status':
             results = AIRuntimeDetector.get_runtime_status()
+            self._send_json(results)
+            return
+
+        elif path == '/api/dotfiles/status':
+            results = self.dotfiles_manager.get_status()
             self._send_json(results)
             return
 
@@ -512,6 +519,16 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                     self._send_error_json("workspace_id is required", status=400)
                     return
                 res = self.ai_storage.clean_workspace(workspace_id)
+                self._send_json(res)
+                return
+
+            elif path == '/api/dotfiles/run':
+                cmd_name = body.get('command')
+                msg = body.get('message')
+                if not cmd_name:
+                    self._send_error_json("command is required", status=400)
+                    return
+                res = self.dotfiles_manager.run_command(cmd_name, message=msg)
                 self._send_json(res)
                 return
 

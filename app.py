@@ -27,6 +27,7 @@ from targz_manager.installer import (
 from targz_manager.server import create_server
 from targz_manager.cleaner import SystemCleaner
 from targz_manager.ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
+from targz_manager.dotfiles_manager import DotfilesManager
 
 
 def find_free_port(start_port: int = 8421) -> int:
@@ -186,6 +187,10 @@ Examples:
     p_ai_storage = subparsers.add_parser("ai-storage", help="Inspect and manage local AI model weights and agent workspaces")
     p_ai_storage.add_argument("--delete-model", type=str, help="Delete model by ID (e.g. hf:models--bert-base-uncased)")
     p_ai_storage.add_argument("--clean-workspace", type=str, help="Clean workspace by ID (e.g. claude_projects, cursor_storage)")
+
+    p_dotfiles = subparsers.add_parser("dotfiles", help="Manage dotfiles using ~/.dotfiles/dotfiles script")
+    p_dotfiles.add_argument("action", nargs="?", default="status", choices=["status", "check", "apply", "update", "save", "gnome-out", "gnome-in"], help="Action to run (default: status)")
+    p_dotfiles.add_argument("--message", "-m", help="Commit message when saving")
 
     args = parser.parse_args()
 
@@ -534,6 +539,37 @@ Examples:
         print("=" * 80)
         print(f"Total AI Storage Footprint: \033[1;36m{data['total_size_formatted']}\033[0m\n")
         return
+
+    elif args.command == "dotfiles":
+        dm = DotfilesManager()
+        if args.action == "status":
+            st = dm.get_status()
+            print("\n" + "=" * 80)
+            print(f"  DOTFILES STATUS: {st['repo_path']}")
+            print("=" * 80)
+            if not st["exists"]:
+                print(f"  Repo not found at {st['repo_path']}")
+            else:
+                script_icon = "✓" if st["has_script"] else "✗"
+                print(f"  Script:    {script_icon} {st['script_path']}")
+                print(f"  Packages:  {', '.join(st['packages'])}")
+                if st["git"]["is_git"]:
+                    git_state = "clean" if st["git"]["clean"] else f"dirty ({st['git']['modified_files']} modified)"
+                    print(f"  Branch:    {st['git']['branch']} [{git_state}]")
+                    print(f"  Latest:    {st['git']['last_commit']}")
+            print("=" * 80 + "\n")
+            return
+        else:
+            print(f"\n--> Running: dotfiles {args.action}...")
+            res = dm.run_command(args.action, message=args.message)
+            if res.get("output"):
+                print(res["output"])
+            if not res.get("success"):
+                print(f"✗ Command failed: {res.get('error')}")
+            else:
+                print(f"✓ dotfiles {args.action} completed.")
+            print()
+            return
 
     target_port = args.port or 8421
     host = args.host

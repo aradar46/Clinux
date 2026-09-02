@@ -419,6 +419,7 @@ class TarGzApp {
     const taskCleaner = document.getElementById('taskTabCleaner');
     const taskDisc = document.getElementById('taskTabDiscovered');
     const taskAI = document.getElementById('taskTabAI');
+    const taskDotfiles = document.getElementById('taskTabDotfiles');
 
     const tabAll = document.getElementById('tabAllApps');
     const tabIgnored = document.getElementById('tabIgnored');
@@ -427,11 +428,13 @@ class TarGzApp {
     const emptyState = document.getElementById('emptyState');
     const cleanerView = document.getElementById('cleanerView');
     const aiView = document.getElementById('aiView');
+    const dotfilesView = document.getElementById('dotfilesView');
 
     if (taskApps) taskApps.classList.toggle('active', tab === 'all' || tab === 'ignored');
     if (taskCleaner) taskCleaner.classList.toggle('active', tab === 'cleaner');
     if (taskDisc) taskDisc.classList.toggle('active', tab === 'discovered');
     if (taskAI) taskAI.classList.toggle('active', tab === 'ai');
+    if (taskDotfiles) taskDotfiles.classList.toggle('active', tab === 'dotfiles');
 
     if (tabAll) tabAll.classList.toggle('active', tab === 'all');
     if (tabIgnored) tabIgnored.classList.toggle('active', tab === 'ignored');
@@ -441,6 +444,7 @@ class TarGzApp {
       if (emptyState) emptyState.style.display = 'none';
       if (controlsBar) controlsBar.style.display = 'none';
       if (aiView) aiView.style.display = 'none';
+      if (dotfilesView) dotfilesView.style.display = 'none';
       if (cleanerView) cleanerView.style.display = 'flex';
       this.scanCleaner(false);
     } else if (tab === 'ai') {
@@ -448,11 +452,21 @@ class TarGzApp {
       if (emptyState) emptyState.style.display = 'none';
       if (controlsBar) controlsBar.style.display = 'none';
       if (cleanerView) cleanerView.style.display = 'none';
+      if (dotfilesView) dotfilesView.style.display = 'none';
       if (aiView) aiView.style.display = 'flex';
       this.loadAIData();
+    } else if (tab === 'dotfiles') {
+      if (appsGrid) appsGrid.style.display = 'none';
+      if (emptyState) emptyState.style.display = 'none';
+      if (controlsBar) controlsBar.style.display = 'none';
+      if (cleanerView) cleanerView.style.display = 'none';
+      if (aiView) aiView.style.display = 'none';
+      if (dotfilesView) dotfilesView.style.display = 'flex';
+      this.fetchDotfilesStatus();
     } else {
       if (cleanerView) cleanerView.style.display = 'none';
       if (aiView) aiView.style.display = 'none';
+      if (dotfilesView) dotfilesView.style.display = 'none';
       if (controlsBar) controlsBar.style.display = 'flex';
       if (appsGrid) appsGrid.style.display = 'grid';
       if (tab === 'discovered' && this.discoveredApps.length === 0) {
@@ -2313,6 +2327,127 @@ class TarGzApp {
     } catch (e) {
       this.toast(`Clean failed: ${e.message}`, 'error');
     }
+  }
+
+  // =========================================================================
+  // Dotfiles Manager
+  // =========================================================================
+
+  async fetchDotfilesStatus(showToast = false) {
+    if (showToast) this.toast('Refreshing dotfiles status...', 'info');
+    try {
+      const res = await fetch('/api/dotfiles/status');
+      if (!res.ok) throw new Error('Failed to load dotfiles status');
+      const data = await res.json();
+      this.dotfilesData = data;
+      this.renderDotfiles();
+      if (showToast) this.toast('Dotfiles status refreshed', 'success');
+    } catch (e) {
+      console.error('fetchDotfilesStatus error:', e);
+      if (showToast) this.toast('Failed to load dotfiles: ' + e.message, 'error');
+    }
+  }
+
+  renderDotfiles() {
+    const d = this.dotfilesData;
+    if (!d) return;
+
+    const badge = document.getElementById('dotfilesBadge');
+    const heroTitle = document.getElementById('dotfilesHeroTitle');
+    const heroDesc = document.getElementById('dotfilesHeroDesc');
+    const branch = document.getElementById('dotfilesBranch');
+    const gitState = document.getElementById('dotfilesGitState');
+    const lastCommit = document.getElementById('dotfilesLastCommit');
+    const pkgsList = document.getElementById('dotfilesPackagesList');
+
+    if (heroTitle) heroTitle.textContent = d.repo_path || '~/.dotfiles';
+
+    if (!d.exists) {
+      if (heroDesc) heroDesc.textContent = 'Repository directory not found at ~/.dotfiles';
+      if (badge) badge.style.display = 'none';
+      return;
+    }
+
+    if (d.git && d.git.is_git) {
+      if (branch) branch.textContent = d.git.branch || 'main';
+      if (lastCommit) lastCommit.textContent = d.git.last_commit || 'No commits';
+      if (gitState) {
+        if (d.git.clean) {
+          gitState.textContent = 'clean';
+          gitState.style.background = 'rgba(16,185,129,0.15)';
+          gitState.style.color = 'var(--accent-emerald)';
+          if (badge) badge.style.display = 'none';
+        } else {
+          gitState.textContent = `${d.git.modified_files} modified`;
+          gitState.style.background = 'rgba(245,158,11,0.15)';
+          gitState.style.color = 'var(--accent-amber)';
+          if (badge) {
+            badge.style.display = 'inline-block';
+            badge.textContent = `${d.git.modified_files} modified`;
+          }
+        }
+      }
+    }
+
+    if (pkgsList && d.packages) {
+      pkgsList.innerHTML = d.packages.map(p => `
+        <span class="ai-agent-tag active">${this.escapeHtml(p)}</span>
+      `).join('');
+    }
+  }
+
+  async runDotfilesCommand(command, message = null) {
+    const consoleElem = document.getElementById('dotfilesOutputConsole');
+    const badgeElem = document.getElementById('dotfilesOutputBadge');
+
+    if (badgeElem) badgeElem.textContent = `Running ${command}...`;
+    if (consoleElem) consoleElem.textContent = `--> dotfiles ${command}...\n`;
+
+    try {
+      const res = await fetch('/api/dotfiles/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, message })
+      });
+      const data = await res.json();
+      if (consoleElem) {
+        consoleElem.textContent = data.output || (data.success ? '✓ Completed without output.' : '✗ ' + (data.error || 'Failed'));
+      }
+      if (badgeElem) {
+        badgeElem.textContent = data.success ? 'Success' : 'Failed';
+      }
+
+      if (data.success) {
+        this.toast(`dotfiles ${command} completed`, 'success');
+      } else {
+        this.toast(`dotfiles ${command} failed: ` + (data.error || 'Check console'), 'error');
+      }
+
+      await this.fetchDotfilesStatus(false);
+    } catch (e) {
+      if (consoleElem) consoleElem.textContent = `Error executing request: ${e.message}`;
+      if (badgeElem) badgeElem.textContent = 'Error';
+      this.toast(`Request failed: ${e.message}`, 'error');
+    }
+  }
+
+  saveDotfiles() {
+    const input = document.getElementById('dotfilesCommitMsg');
+    const msg = input ? input.value.trim() : '';
+    if (!msg) {
+      this.toast('Please enter a commit message before saving', 'info');
+      if (input) input.focus();
+      return;
+    }
+    this.runDotfilesCommand('save', msg);
+    if (input) input.value = '';
+  }
+
+  clearDotfilesConsole() {
+    const consoleElem = document.getElementById('dotfilesOutputConsole');
+    const badgeElem = document.getElementById('dotfilesOutputBadge');
+    if (consoleElem) consoleElem.textContent = 'Console cleared.';
+    if (badgeElem) badgeElem.textContent = 'Ready';
   }
 }
 
