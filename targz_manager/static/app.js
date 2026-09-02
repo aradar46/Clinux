@@ -30,6 +30,12 @@ class TarGzApp {
     this.activeApp = null;
     this.clientId = 'client_' + Math.random().toString(36).substring(2, 10);
 
+    // Clean Master State
+    this.cleanerData = null;
+    this.selectedCleanerTargets = new Set();
+    this.pendingSudoTargets = [];
+    this.isCleaning = false;
+
     this.init();
   }
 
@@ -41,6 +47,7 @@ class TarGzApp {
     await this.refreshApps();
     await this.refreshStats();
     await this.fetchDiscovered();
+    this.scanCleaner(false);
   }
 
   startHeartbeat() {
@@ -391,12 +398,29 @@ class TarGzApp {
     const tabAll = document.getElementById('tabAllApps');
     const tabDisc = document.getElementById('discoveredTabPill');
     const tabIgnored = document.getElementById('tabIgnored');
+    const tabCleaner = document.getElementById('tabCleaner');
+    const viewSortControls = document.getElementById('viewSortControls');
+    const appsGrid = document.getElementById('appsGrid');
+    const emptyState = document.getElementById('emptyState');
+    const cleanerView = document.getElementById('cleanerView');
 
     if (tabAll) tabAll.classList.toggle('active', tab === 'all');
     if (tabDisc) tabDisc.classList.toggle('active', tab === 'discovered');
     if (tabIgnored) tabIgnored.classList.toggle('active', tab === 'ignored');
+    if (tabCleaner) tabCleaner.classList.toggle('active', tab === 'cleaner');
 
-    this.renderApps();
+    if (tab === 'cleaner') {
+      if (appsGrid) appsGrid.style.display = 'none';
+      if (emptyState) emptyState.style.display = 'none';
+      if (viewSortControls) viewSortControls.style.display = 'none';
+      if (cleanerView) cleanerView.style.display = 'flex';
+      this.scanCleaner(false);
+    } else {
+      if (cleanerView) cleanerView.style.display = 'none';
+      if (viewSortControls) viewSortControls.style.display = 'flex';
+      if (appsGrid) appsGrid.style.display = 'grid';
+      this.renderApps();
+    }
   }
 
   setSort(sortVal) {
@@ -1506,6 +1530,319 @@ class TarGzApp {
       unitIdx++;
     }
     return `${size.toFixed(1)} ${units[unitIdx]}`;
+  }
+
+  // =========================================================================
+  // Clean Master (Cache & Junk Cleaner)
+  // =========================================================================
+  async scanCleaner(force = false) {
+    const rescanBtn = document.getElementById('cleanerRescanBtn');
+    if (rescanBtn) {
+      rescanBtn.disabled = true;
+      rescanBtn.innerHTML = `<svg class="icon spin" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Scanning...`;
+    }
+
+    try {
+      const res = await fetch('/api/cleaner/scan');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      this.cleanerData = data;
+
+      const badge = document.getElementById('cleanerTotalBadge');
+      if (badge) badge.textContent = data.total_size_formatted || '0 B';
+
+      const heroSize = document.getElementById('cleanerHeroSize');
+      if (heroSize) heroSize.textContent = data.total_size_formatted || '0 B';
+
+      const heroDesc = document.getElementById('cleanerHeroDesc');
+      if (heroDesc) {
+        const count = data.targets.length;
+        heroDesc.textContent = count > 0 
+          ? `Found ${data.total_size_formatted} reclaimable caches and junk files across ${count} location${count === 1 ? '' : 's'}.`
+          : 'All clean. No package manager or temporary caches found.';
+      }
+
+      if (this.selectedCleanerTargets.size === 0 || force) {
+        this.selectedCleanerTargets.clear();
+        for (const t of data.targets) {
+          if (t.default_checked && t.safe_to_clean) {
+            this.selectedCleanerTargets.add(t.id);
+          }
+        }
+      }
+
+      this.renderCleaner();
+      this.updateCleanerSelectionMetrics();
+    } catch (e) {
+      console.error('Failed to scan caches:', e);
+      this.toast('Failed to scan caches: ' + e.message, 'error');
+    } finally {
+      if (rescanBtn) {
+        rescanBtn.disabled = false;
+        rescanBtn.innerHTML = `<svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg> Scan`;
+      }
+    }
+  }
+
+  updateCleanerSelectionMetrics() {
+    if (!this.cleanerData || !this.cleanerData.targets) return;
+
+    let selectedBytes = 0;
+    for (const t of this.cleanerData.targets) {
+      if (this.selectedCleanerTargets.has(t.id)) {
+        selectedBytes += t.size_bytes || 0;
+      }
+    }
+
+    const sizeStr = this.formatBytes(selectedBytes);
+    const sizeSpan = document.getElementById('cleanSelectedSizeStr');
+    if (sizeSpan) sizeSpan.textContent = sizeStr;
+
+    const cleanBtn = document.getElementById('cleanSelectedBtn');
+    if (cleanBtn) {
+      cleanBtn.disabled = this.selectedCleanerTargets.size === 0 || this.isCleaning;
+    }
+  }
+
+  toggleCleanerTarget(targetId) {
+    if (this.selectedCleanerTargets.has(targetId)) {
+      this.selectedCleanerTargets.delete(targetId);
+    } else {
+      this.selectedCleanerTargets.add(targetId);
+    }
+    this.updateCleanerSelectionMetrics();
+  }
+
+  toggleSelectAllCleaner() {
+    if (!this.cleanerData || !this.cleanerData.targets) return;
+
+    const allSelected = this.cleanerData.targets.every(t => this.selectedCleanerTargets.has(t.id));
+    if (allSelected) {
+      this.selectedCleanerTargets.clear();
+    } else {
+      for (const t of this.cleanerData.targets) {
+        if (t.safe_to_clean) {
+          this.selectedCleanerTargets.add(t.id);
+        }
+      }
+    }
+    this.renderCleaner();
+    this.updateCleanerSelectionMetrics();
+  }
+
+  renderCleaner() {
+    const container = document.getElementById('cleanerSections');
+    if (!container) return;
+
+    if (!this.cleanerData || !this.cleanerData.targets || this.cleanerData.targets.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state" style="padding:3rem 1rem;">
+          <svg class="empty-icon" style="color:var(--accent-emerald);" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <h3 class="empty-title">System is Clean</h3>
+          <p class="empty-desc">No package manager caches or junk files found on your system.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const categories = [
+      { id: 'package_managers', title: 'Package Managers & AUR', icon: '<path d="m16.5 9.4-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>' },
+      { id: 'developer', title: 'Developer Tools & Runtimes', icon: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>' },
+      { id: 'system', title: 'Desktop & Temporary Junk', icon: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>' }
+    ];
+
+    let html = '';
+    for (const cat of categories) {
+      const items = this.cleanerData.targets.filter(t => t.category === cat.id);
+      if (items.length === 0) continue;
+
+      let catBytes = items.reduce((acc, t) => acc + (t.size_bytes || 0), 0);
+
+      html += `
+        <div class="cleaner-category-section">
+          <div class="cleaner-category-header">
+            <div class="cleaner-category-header-title">
+              <svg class="icon" viewBox="0 0 24 24" style="color:var(--accent-emerald); width:16px; height:16px;">
+                ${cat.icon}
+              </svg>
+              <span>${cat.title}</span>
+            </div>
+            <span class="badge badge-slate">${this.formatBytes(catBytes)}</span>
+          </div>
+          <div class="cleaner-category-items">
+      `;
+
+      for (const item of items) {
+        const isChecked = this.selectedCleanerTargets.has(item.id);
+        const rootBadge = item.needs_sudo 
+          ? `<span class="badge" style="background:rgba(245, 158, 11, 0.12); color:#fbbf24; border:1px solid rgba(245, 158, 11, 0.3);">Root / Sudo</span>`
+          : `<span class="badge" style="background:var(--accent-emerald-bg); color:var(--accent-emerald);">Safe to clean</span>`;
+
+        html += `
+          <div class="cleaner-target-item">
+            <div class="cleaner-target-info">
+              <input type="checkbox" class="cleaner-target-checkbox" id="check_${item.id}"
+                ${isChecked ? 'checked' : ''}
+                onchange="app.toggleCleanerTarget('${item.id}')"
+              >
+              <div class="cleaner-target-meta">
+                <div class="cleaner-target-title-row">
+                  <label for="check_${item.id}" class="cleaner-target-name" style="cursor:pointer;">${this.escapeHtml(item.name)}</label>
+                  ${rootBadge}
+                </div>
+                <div class="cleaner-target-path">${this.escapeHtml(item.path)}</div>
+                <div class="cleaner-target-desc">${this.escapeHtml(item.description)}</div>
+              </div>
+            </div>
+            <div class="cleaner-target-stats">
+              <div class="cleaner-target-numbers">
+                <div class="cleaner-size-badge">${item.size_formatted}</div>
+                <div class="cleaner-files-count">${item.file_count.toLocaleString()} files</div>
+              </div>
+              <button class="btn btn-sm btn-secondary" onclick="app.cleanSingleTarget('${item.id}')" title="Clean only this cache">
+                Clean
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      html += `
+          </div>
+        </div>
+      `;
+    }
+
+    container.innerHTML = html;
+  }
+
+  showSudoCommandModal(sudoTargets, userFreedNotice = '') {
+    const desc = document.getElementById('sudoCommandDesc');
+    const codeEl = document.getElementById('sudoCommandCode');
+    const noticeEl = document.getElementById('sudoNonRootCleanNotice');
+
+    const names = sudoTargets.map(t => t.name).join(', ');
+    if (desc) {
+      desc.innerHTML = `Administrator privileges are required to clean <strong>${this.escapeHtml(names)}</strong>. Run this command in your terminal:`;
+    }
+
+    const commands = sudoTargets.map(t => t.sudo_command || `sudo rm -rf '${t.path}'/*`);
+    const uniqueCommands = Array.from(new Set(commands));
+    const commandText = uniqueCommands.join(' && ');
+
+    if (codeEl) {
+      codeEl.textContent = commandText;
+    }
+
+    if (noticeEl) {
+      if (userFreedNotice) {
+        noticeEl.style.display = 'block';
+        noticeEl.innerHTML = `✓ User-level caches cleaned successfully (freed ${this.escapeHtml(userFreedNotice)}).`;
+      } else {
+        noticeEl.style.display = 'none';
+        noticeEl.innerHTML = '';
+      }
+    }
+
+    this.openModal('sudoCommandModal');
+  }
+
+  copySudoCommand() {
+    const codeEl = document.getElementById('sudoCommandCode');
+    const text = codeEl ? codeEl.textContent : '';
+    if (text) {
+      navigator.clipboard.writeText(text).then(() => {
+        this.toast('Command copied to clipboard!', 'success');
+      }).catch(() => {
+        this.toast('Failed to copy. Please select and copy manually.', 'error');
+      });
+    }
+  }
+
+  async completeSudoCommandClean() {
+    this.closeModal('sudoCommandModal');
+    this.toast('Refreshing cache scan...', 'info');
+    await this.scanCleaner(true);
+  }
+
+  async cleanSelectedCaches() {
+    if (this.selectedCleanerTargets.size === 0) {
+      this.toast('No caches selected to clean.', 'info');
+      return;
+    }
+
+    const targetsToClean = Array.from(this.selectedCleanerTargets);
+    const allTargets = this.cleanerData?.targets || [];
+    const sudoTargets = allTargets.filter(t => targetsToClean.includes(t.id) && t.needs_sudo);
+    const userTargets = allTargets.filter(t => targetsToClean.includes(t.id) && !t.needs_sudo);
+
+    let userFreedStr = '';
+    if (userTargets.length > 0) {
+      const btn = document.getElementById('cleanSelectedBtn');
+      this.isCleaning = true;
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<svg class="icon spin" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Cleaning...`;
+      }
+
+      try {
+        const res = await fetch('/api/cleaner/clean', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targets: userTargets.map(t => t.id) })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          userFreedStr = data.freed_formatted || '0 B';
+        }
+      } catch (e) {
+        console.error('Failed to clean user targets:', e);
+      } finally {
+        this.isCleaning = false;
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = `
+            <svg class="icon" viewBox="0 0 24 24"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 5l5 5"/><path d="m22 20-2 2-4-4 2-2 4 4Z"/></svg>
+            Clean Selected (<span id="cleanSelectedSizeStr">0 B</span>)
+          `;
+        }
+      }
+    }
+
+    if (sudoTargets.length > 0) {
+      this.showSudoCommandModal(sudoTargets, userFreedStr);
+    } else {
+      if (userFreedStr) {
+        this.toast(`Clean complete. Freed ${userFreedStr} of disk space!`, 'success');
+      }
+      await this.scanCleaner(true);
+      this.updateCleanerSelectionMetrics();
+    }
+  }
+
+  async cleanSingleTarget(targetId) {
+    const target = (this.cleanerData?.targets || []).find(t => t.id === targetId);
+    if (target && target.needs_sudo) {
+      this.showSudoCommandModal([target]);
+      return;
+    }
+
+    try {
+      this.toast('Cleaning cache...', 'info');
+      const res = await fetch('/api/cleaner/clean', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targets: [targetId] })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const freedStr = data.freed_formatted || '0 B';
+      this.toast(`Cleaned ${freedStr}`, 'success');
+      await this.scanCleaner(true);
+    } catch (e) {
+      console.error('Single clean failed:', e);
+      this.toast('Clean failed: ' + e.message, 'error');
+    }
   }
 }
 

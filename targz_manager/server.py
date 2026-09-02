@@ -18,6 +18,7 @@ from .installer import (
     DEFAULT_DESKTOP_DIR
 )
 from .scanner import SystemScanner
+from .cleaner import SystemCleaner
 
 import time
 import threading
@@ -77,19 +78,40 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         self.installer = installer or Installer()
         self.db = self.installer.db
         self.scanner = SystemScanner(self.db, self.installer)
+        self.cleaner = SystemCleaner()
         super().__init__(*args, **kwargs)
 
     def log_message(self, format, *args):
         sys.stderr.write(f"[{self.log_date_time_string()}] {self.command} {self.path} - {format % args}\n")
+
+    def _is_origin_allowed(self) -> bool:
+        """
+        Prevent CSRF and cross-site attacks from external web pages.
+        Requests with an Origin header are only permitted if they originate
+        from localhost or 127.0.0.1.
+        """
+        origin = self.headers.get('Origin')
+        if not origin:
+            return True
+        allowed_prefixes = (
+            'http://127.0.0.1:',
+            'http://localhost:',
+            'http://[::1]:',
+            'https://127.0.0.1:',
+            'https://localhost:'
+        )
+        return any(origin.startswith(prefix) for prefix in allowed_prefixes)
 
     def _send_json(self, data: Any, status: int = 200):
         body = json.dumps(data, indent=2).encode('utf-8')
         self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        origin = self.headers.get('Origin')
+        if origin and self._is_origin_allowed():
+            self.send_header('Access-Control-Allow-Origin', origin)
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
         self.wfile.write(body)
 
@@ -104,13 +126,21 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         return json.loads(body.decode('utf-8'))
 
     def do_OPTIONS(self):
+        if not self._is_origin_allowed():
+            self.send_error(403, "Cross-origin request forbidden")
+            return
         self.send_response(204)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        origin = self.headers.get('Origin')
+        if origin and self._is_origin_allowed():
+            self.send_header('Access-Control-Allow-Origin', origin)
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
 
     def do_GET(self):
+        if not self._is_origin_allowed():
+            self.send_error(403, "Cross-origin request forbidden")
+            return
         if hasattr(self.server, 'record_heartbeat'):
             self.server.record_heartbeat("page_get")
 
@@ -184,6 +214,11 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 "bin_in_path": bin_in_path,
                 "user": os.environ.get("USER", "user")
             })
+            return
+
+        elif path == '/api/cleaner/scan':
+            results = self.cleaner.scan()
+            self._send_json(results)
             return
 
         elif path == '/api/browse':
@@ -300,6 +335,10 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         })
 
     def do_POST(self):
+        if not self._is_origin_allowed():
+            self.send_error(403, "Cross-origin request forbidden")
+            return
+
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
@@ -388,6 +427,13 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                     return
                 self.db.unignore_discovery(key)
                 self._send_json({"success": True})
+
+            elif path == '/api/cleaner/clean':
+                target_ids = body.get('targets', [])
+                sudo_password = body.get('password')
+                res = self.cleaner.clean(target_ids, sudo_password=sudo_password)
+                self._send_json(res)
+                return
 
             elif path == '/api/apps/scan-directory':
                 dir_path = body.get('dir_path')
@@ -595,6 +641,10 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             })
 
     def do_DELETE(self):
+        if not self._is_origin_allowed():
+            self.send_error(403, "Cross-origin request forbidden")
+            return
+
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)

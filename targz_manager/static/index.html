@@ -49,6 +49,10 @@
 
     <!-- Primary Actions -->
     <div class="main-actions">
+      <button class="btn btn-secondary" onclick="app.setTab('cleaner')" title="Clean package manager caches and junk files">
+        <svg class="icon" viewBox="0 0 24 24"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 5l5 5"/><path d="m22 20-2 2-4-4 2-2 4 4Z"/></svg>
+        Clean Master
+      </button>
       <button class="btn btn-secondary" onclick="app.openRegisterModal()" title="Register an application already installed by hand">
         <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
         Register Existing
@@ -94,9 +98,13 @@
         <button class="pill-btn" id="tabIgnored" onclick="app.setTab('ignored')">
           Ignored (<span id="countIgnored">0</span>)
         </button>
+        <button class="pill-btn pill-btn-cleaner" id="tabCleaner" onclick="app.setTab('cleaner')">
+          <svg class="icon icon-sm" viewBox="0 0 24 24" style="width:14px;height:14px;margin-right:4px;"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 5l5 5"/><path d="m22 20-2 2-4-4 2-2 4 4Z"/></svg>
+          Clean Master (<span id="cleanerTotalBadge">0 B</span>)
+        </button>
       </div>
 
-      <div class="view-sort-controls">
+      <div class="view-sort-controls" id="viewSortControls">
         <label for="sortSelect" style="font-size:0.775rem; color:var(--text-muted);">Sort by:</label>
         <select id="sortSelect" class="select-input" onchange="app.setSort(this.value)">
           <option value="name_asc">Name (A → Z)</option>
@@ -113,6 +121,45 @@
     <!-- App Cards Grid -->
     <div id="appsGrid" class="apps-grid">
       <!-- Dynamically Populated by app.js -->
+    </div>
+
+    <!-- Clean Master View -->
+    <div id="cleanerView" class="cleaner-view" style="display:none;">
+      <div class="cleaner-hero">
+        <div class="cleaner-hero-main">
+          <div class="cleaner-hero-icon-wrapper">
+            <svg class="cleaner-hero-icon" viewBox="0 0 24 24">
+              <path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/>
+              <path d="m5 2 5 5"/>
+              <path d="M2 5l5 5"/>
+              <path d="m22 20-2 2-4-4 2-2 4 4Z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="cleaner-hero-badge">Clean Master</div>
+            <div class="cleaner-hero-size" id="cleanerHeroSize">0 B</div>
+            <div class="cleaner-hero-desc" id="cleanerHeroDesc">Scanning system for reclaimable package manager caches and junk files...</div>
+          </div>
+        </div>
+        <div class="cleaner-hero-actions">
+          <button class="btn btn-success btn-lg" id="cleanSelectedBtn" onclick="app.cleanSelectedCaches()">
+            <svg class="icon" viewBox="0 0 24 24"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 5l5 5"/><path d="m22 20-2 2-4-4 2-2 4 4Z"/></svg>
+            Clean Selected (<span id="cleanSelectedSizeStr">0 B</span>)
+          </button>
+          <button class="btn btn-secondary" id="cleanerRescanBtn" onclick="app.scanCleaner(true)" title="Re-scan all caches">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+            Scan
+          </button>
+          <button class="btn btn-secondary" onclick="app.toggleSelectAllCleaner()">
+            Toggle All
+          </button>
+        </div>
+      </div>
+
+      <!-- Categories Container -->
+      <div id="cleanerSections" class="cleaner-sections">
+        <!-- Dynamically rendered by app.js -->
+      </div>
     </div>
 
     <!-- Empty State -->
@@ -695,6 +742,41 @@
         <div style="flex:1; font-size:0.775rem; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="browserSelectedPreview">No item selected</div>
         <button class="btn btn-secondary" onclick="app.closeModal('fileBrowserModal')">Cancel</button>
         <button class="btn btn-primary" id="browserChooseBtn" onclick="app.confirmBrowserSelection()">Select</button>
+      </div>
+    </div>
+  <!-- 7. Sudo Command Instructions Modal -->
+  <div id="sudoCommandModal" class="modal-backdrop">
+    <div class="modal-dialog" style="max-width:520px;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="color:var(--accent-amber);">
+          <svg class="icon" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          Terminal Command Required
+        </h3>
+        <button class="modal-close" onclick="app.closeModal('sudoCommandModal')">
+          <svg class="icon" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:0.75rem;" id="sudoCommandDesc">
+          Administrator privileges are required to clean this target. Run the following command in your terminal:
+        </p>
+        <div class="code-box-container" style="position:relative; margin-bottom:1rem;">
+          <pre id="sudoCommandCode" style="background:var(--bg-card-hover); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:0.85rem 3rem 0.85rem 1rem; font-family:monospace; font-size:0.85rem; color:var(--accent-emerald); overflow-x:auto; white-space:pre-wrap; word-break:break-all; user-select:all;"></pre>
+          <button class="btn btn-sm btn-secondary" style="position:absolute; top:0.5rem; right:0.5rem; padding:0.25rem 0.5rem;" onclick="app.copySudoCommand()" title="Copy command">
+            <svg class="icon" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+          </button>
+        </div>
+        <div id="sudoNonRootCleanNotice" style="display:none; background:rgba(16, 185, 129, 0.1); border:1px solid rgba(16, 185, 129, 0.25); border-radius:var(--radius-md); padding:0.6rem 0.85rem; font-size:0.8rem; color:var(--accent-emerald); margin-bottom:0.75rem;"></div>
+        <p style="font-size:0.78rem; color:var(--text-tertiary); margin:0;">
+          After running the command in your terminal, click "Done / Re-scan" to update the space calculations.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('sudoCommandModal')">Close</button>
+        <button class="btn btn-primary" onclick="app.completeSudoCommandClean()">
+          <svg class="icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          Done / Re-scan
+        </button>
       </div>
     </div>
   </div>

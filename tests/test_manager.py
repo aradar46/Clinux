@@ -246,6 +246,17 @@ class TestHttpServerApi(unittest.TestCase):
             self.assertIn("quick_links", data)
             self.assertIn("items", data)
 
+    def test_cross_origin_blocked(self):
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/api/stats",
+            headers={"Origin": "http://evil.com"}
+        )
+        try:
+            with urllib.request.urlopen(req) as resp:
+                self.fail("Expected 403 Forbidden for cross-origin request")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 403)
+
 
 if __name__ == "__main__":
     unittest.main()

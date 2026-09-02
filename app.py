@@ -25,6 +25,7 @@ from targz_manager.installer import (
     DEFAULT_DESKTOP_DIR
 )
 from targz_manager.server import create_server
+from targz_manager.cleaner import SystemCleaner
 
 
 def find_free_port(start_port: int = 8421) -> int:
@@ -162,6 +163,11 @@ Examples:
 
     p_launch = subparsers.add_parser("launch", help="Launch an application")
     p_launch.add_argument("app_id_or_name", help="App ID or slug name")
+
+    p_clean = subparsers.add_parser("clean", help="Find and clean package manager caches and junk files")
+    p_clean.add_argument("--all", "-a", action="store_true", help="Clean all detected safe caches immediately")
+    p_clean.add_argument("--targets", "-t", type=str, help="Comma-separated target IDs to clean (e.g. yay,pip,thumbnails)")
+    p_clean.add_argument("--dry-run", action="store_true", help="Scan and list without deleting")
 
     args = parser.parse_args()
 
@@ -359,6 +365,59 @@ Examples:
 
         installer.launch_app(app["id"])
         print(f"✓ Launched {app['display_name']}.")
+        return
+
+    elif args.command == "clean":
+        cleaner = SystemCleaner()
+        print("\n🔍 Scanning package manager caches and junk files...")
+        scan_res = cleaner.scan()
+        targets = scan_res["targets"]
+
+        if not targets:
+            print("✓ No cleanable caches or junk found. Your system is spotless!\n")
+            return
+
+        print("\n" + "=" * 85)
+        print(f"{'ID':<14} {'NAME':<24} {'CATEGORY':<16} {'SIZE':<10} {'FILES':<8} {'PATH'}")
+        print("-" * 85)
+        for t in targets:
+            loc = t['path']
+            if len(loc) > 28:
+                loc = "..." + loc[-25:]
+            print(f"{t['id']:<14} {t['name'][:22]:<24} {t['category'][:14]:<16} {t['size_formatted']:<10} {str(t['file_count']):<8} {loc}")
+        print("=" * 85)
+        print(f"Total reclaimable space: {scan_res['total_size_formatted']} ({scan_res['total_files']} files)\n")
+
+        to_clean = []
+        if args.targets:
+            chosen = [x.strip() for x in args.targets.split(",") if x.strip()]
+            to_clean = [t["id"] for t in targets if t["id"] in chosen]
+        elif args.all:
+            to_clean = [t["id"] for t in targets if t.get("safe_to_clean", True)]
+        elif not args.dry_run:
+            try:
+                ans = input(f"Clean all safe caches ({scan_res['total_size_formatted']})? [y/N]: ").strip().lower()
+                if ans in ('y', 'yes'):
+                    to_clean = [t["id"] for t in targets if t.get("safe_to_clean", True)]
+                else:
+                    print("Clean cancelled.")
+                    return
+            except (KeyboardInterrupt, EOFError):
+                print("\nCancelled.")
+                return
+
+        if to_clean:
+            print(f"\n🧹 Cleaning {len(to_clean)} cache target(s)...")
+            res = cleaner.clean(to_clean, interactive=True)
+            for r in res["results"]:
+                if r["success"]:
+                    print(f"  ✓ {r['name']}: Freed {r['freed_formatted']} ({r['freed_files']} files)")
+                elif r.get("needs_sudo"):
+                    print(f"  ℹ {r['name']} requires root privileges.")
+                    print(f"    Run manually: {r.get('sudo_command')}")
+                else:
+                    print(f"  ⚠ {r['name']} failed: {r.get('error')}")
+            print(f"\n✨ Clean complete. Total space freed: {res['freed_formatted']}\n")
         return
 
     target_port = args.port or 8421
