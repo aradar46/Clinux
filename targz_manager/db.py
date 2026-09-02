@@ -5,14 +5,21 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 
-DEFAULT_DB_DIR = Path.home() / ".local" / "share" / "targz-manager"
+DEFAULT_DB_DIR = Path.home() / ".local" / "share" / "clinux"
 DEFAULT_DB_PATH = DEFAULT_DB_DIR / "apps.db"
+OLD_DB_PATH = Path.home() / ".local" / "share" / "targz-manager" / "apps.db"
 
 
 class Database:
     def __init__(self, db_path: Optional[Path] = None):
         if db_path is None:
             DEFAULT_DB_DIR.mkdir(parents=True, exist_ok=True)
+            if OLD_DB_PATH.exists() and not DEFAULT_DB_PATH.exists():
+                try:
+                    import shutil
+                    shutil.copy2(OLD_DB_PATH, DEFAULT_DB_PATH)
+                except Exception:
+                    pass
             self.db_path = DEFAULT_DB_PATH
         else:
             self.db_path = Path(db_path)

@@ -166,12 +166,15 @@ class TarGzApp {
 
   async refreshApps() {
     try {
-      const res = await fetch(`/api/apps?sort=${encodeURIComponent(this.currentSort)}`);
+      const res = await fetch('/api/apps');
       if (res.ok) {
         const data = await res.json();
         this.apps = data.apps || [];
+        const activeCount = this.apps.filter(a => !a.ignored).length;
         const countAll = document.getElementById('countAllApps');
-        if (countAll) countAll.innerText = this.apps.filter(a => !a.ignored).length;
+        const appsNavBadge = document.getElementById('appsNavBadge');
+        if (countAll) countAll.innerText = activeCount;
+        if (appsNavBadge) appsNavBadge.innerText = activeCount;
         this.updateIgnoredCount();
         this.renderApps();
       }
@@ -193,11 +196,11 @@ class TarGzApp {
   }
 
   async refreshAll() {
-    this.toast('Scanning system and refreshing...', 'info');
+    this.toast('Refreshing system info & applications...', 'info');
     await this.refreshApps();
     await this.refreshStats();
     await this.fetchDiscovered();
-    this.toast('Refreshed!', 'success');
+    this.toast('System refresh complete', 'success');
   }
 
   // =========================================================================
@@ -210,7 +213,9 @@ class TarGzApp {
         const data = await res.json();
         this.discoveredApps = data.discovered || [];
         this.renderDiscoveredBanner();
-        this.updateIgnoredCount();
+        if (this.currentTab === 'discovered') {
+          this.renderApps();
+        }
       }
     } catch (e) {
       console.error('Discovery fetch error:', e);
@@ -219,26 +224,24 @@ class TarGzApp {
 
   renderDiscoveredBanner() {
     const banner = document.getElementById('discoveredBanner');
-    const tabPill = document.getElementById('discoveredTabPill');
+    const taskPill = document.getElementById('taskTabDiscovered');
     const countPill = document.getElementById('discoveredCountPill');
     const pillTabCount = document.getElementById('pillDiscoveredCount');
     const bannerText = document.getElementById('discoveredBannerText');
 
     const available = this.getActiveDiscovered();
 
-    if (!banner || !tabPill) return;
-
     if (available.length > 0) {
-      banner.style.display = 'flex';
-      tabPill.style.display = 'inline-flex';
+      if (banner) banner.style.display = 'flex';
+      if (taskPill) taskPill.style.display = 'inline-flex';
       if (countPill) countPill.innerText = available.length;
       if (pillTabCount) pillTabCount.innerText = available.length;
       if (bannerText) {
         bannerText.innerText = `Found ${available.length} manual application(s) or tarballs in /opt, ~/Applications, or desktop shortcuts ready to be managed.`;
       }
     } else {
-      banner.style.display = 'none';
-      tabPill.style.display = 'none';
+      if (banner) banner.style.display = 'none';
+      if (taskPill) taskPill.style.display = 'none';
       if (this.currentTab === 'discovered') {
         this.setTab('all');
       }
@@ -395,29 +398,34 @@ class TarGzApp {
   // =========================================================================
   setTab(tab) {
     this.currentTab = tab;
+
+    const taskApps = document.getElementById('taskTabApps');
+    const taskCleaner = document.getElementById('taskTabCleaner');
+    const taskDisc = document.getElementById('taskTabDiscovered');
+
     const tabAll = document.getElementById('tabAllApps');
-    const tabDisc = document.getElementById('discoveredTabPill');
     const tabIgnored = document.getElementById('tabIgnored');
-    const tabCleaner = document.getElementById('tabCleaner');
-    const viewSortControls = document.getElementById('viewSortControls');
+    const controlsBar = document.getElementById('controlsBar');
     const appsGrid = document.getElementById('appsGrid');
     const emptyState = document.getElementById('emptyState');
     const cleanerView = document.getElementById('cleanerView');
 
+    if (taskApps) taskApps.classList.toggle('active', tab === 'all' || tab === 'ignored');
+    if (taskCleaner) taskCleaner.classList.toggle('active', tab === 'cleaner');
+    if (taskDisc) taskDisc.classList.toggle('active', tab === 'discovered');
+
     if (tabAll) tabAll.classList.toggle('active', tab === 'all');
-    if (tabDisc) tabDisc.classList.toggle('active', tab === 'discovered');
     if (tabIgnored) tabIgnored.classList.toggle('active', tab === 'ignored');
-    if (tabCleaner) tabCleaner.classList.toggle('active', tab === 'cleaner');
 
     if (tab === 'cleaner') {
       if (appsGrid) appsGrid.style.display = 'none';
       if (emptyState) emptyState.style.display = 'none';
-      if (viewSortControls) viewSortControls.style.display = 'none';
+      if (controlsBar) controlsBar.style.display = 'none';
       if (cleanerView) cleanerView.style.display = 'flex';
       this.scanCleaner(false);
     } else {
       if (cleanerView) cleanerView.style.display = 'none';
-      if (viewSortControls) viewSortControls.style.display = 'flex';
+      if (controlsBar) controlsBar.style.display = 'flex';
       if (appsGrid) appsGrid.style.display = 'grid';
       this.renderApps();
     }
@@ -602,7 +610,7 @@ class TarGzApp {
           </div>
 
           <div class="app-description" title="${this.escapeHtml(app.description || '')}">
-            ${this.escapeHtml(app.description || 'Portable tarball application managed with TarGz Manager.')}
+            ${this.escapeHtml(app.description || 'Portable application managed with Clinux.')}
           </div>
 
           <div class="app-paths-info">
@@ -1920,7 +1928,7 @@ class TarGzApp {
           `;
           actionBtn.onclick = () => window.location.reload();
         }
-        this.toast('TarGz Manager updated successfully!', 'success');
+        this.toast('Clinux updated successfully!', 'success');
       } else {
         if (statusEl) {
           statusEl.innerHTML = `<span style="color:var(--accent-rose); font-weight:600;">⚠ Update encountered an issue. See output above.</span>`;

@@ -41,35 +41,43 @@ def find_free_port(start_port: int = 8421) -> int:
 
 
 def check_server_running(host: str, port: int) -> bool:
-    """Check if TarGz Manager is already active on host:port"""
+    """Check if Clinux is already active on host:port"""
     try:
         url = f"http://{host}:{port}/api/system-info"
-        req = urllib.request.Request(url, headers={"User-Agent": "TarGzManagerLauncher"})
+        req = urllib.request.Request(url, headers={"User-Agent": "ClinuxLauncher"})
         with urllib.request.urlopen(req, timeout=0.5) as resp:
             return resp.status == 200
     except Exception:
         return False
 
 
+def open_browser_tab(url: str):
+    """Open URL using xdg-open directly or Python webbrowser as fallback."""
+    try:
+        subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        webbrowser.open(url)
+
+
 def install_desktop_shortcut_for_manager():
-    """Install .desktop file for TarGz Manager into ~/.local/share/applications"""
+    """Install .desktop file for Clinux into ~/.local/share/applications"""
     script_path = Path(__file__).resolve()
-    icon_path = script_path.parent / "targz_manager" / "static" / "icon.svg"
-    desktop_file = DEFAULT_DESKTOP_DIR / "targz-manager.desktop"
+    icon_path = script_path.parent / "targz_manager" / "static" / "icon.png"
+    desktop_file = DEFAULT_DESKTOP_DIR / "clinux.desktop"
 
     content = [
         "[Desktop Entry]",
         "Type=Application",
         "Version=1.0",
-        "Name=TarGz App Manager",
-        "GenericName=Tarball Package Manager",
-        "Comment=Manage, install, update, and remove portable Linux tarball applications",
+        "Name=Clinux",
+        "GenericName=Linux Cleaner & Portable App Manager",
+        "Comment=Clean system caches, purge package manager junk, and manage portable Linux applications",
         f"Exec=python3 \"{script_path}\"",
         f"Path={script_path.parent}",
         f"Icon={icon_path}",
         "Terminal=false",
         "Categories=System;Utility;PackageManager;Settings;",
-        "StartupNotify=true"
+        "StartupNotify=false"
     ]
 
     DEFAULT_DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
@@ -86,7 +94,7 @@ def install_desktop_shortcut_for_manager():
     except Exception:
         pass
 
-    print(f"✓ Installed TarGz Manager desktop shortcut to: {desktop_file}")
+    print(f"✓ Installed Clinux desktop shortcut to: {desktop_file}")
 
 
 def print_cli_table(apps):
@@ -109,18 +117,17 @@ def print_cli_table(apps):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="TarGz App Manager - Linux Portable App & Tarball Package Manager",
+        description="Clinux - Linux Cleaner & Portable App Manager",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python3 app.py                         # Launch GUI web server and open browser
   python3 app.py --port 8080             # Run on custom port
-  python3 app.py --no-browser            # Run server without opening browser
-  python3 app.py install myapp.tar.gz    # Install tarball from CLI
+  python3 app.py clean                   # Interactive system cleaner
+  python3 app.py clean --dry-run         # Preview reclaimable disk space
+  python3 app.py install myapp.tar.gz    # Install portable app tarball from CLI
   python3 app.py list                    # List all managed apps
-  python3 app.py update 1 new-ver.tar.gz # Update app #1 with new archive
-  python3 app.py remove 1                # Remove app #1
-  python3 app.py --install-desktop-entry # Add TarGz Manager to Linux app launcher
+  python3 app.py --install-desktop-entry # Add Clinux to Linux app launcher
         """
     )
 
@@ -353,70 +360,74 @@ Examples:
         return
 
     elif args.command == "launch":
-        app_ref = args.app_id_or_name
-        app = None
-        if app_ref.isdigit():
-            app = db.get_app(int(app_ref))
-        if not app:
-            app = db.get_app_by_name(app_ref)
-        if not app:
-            print(f"Error: Application '{app_ref}' not found in database.", file=sys.stderr)
+        if not args.target:
+            print("Error: App slug or ID required. Usage: python3 app.py launch <app_slug_or_id>")
             sys.exit(1)
-
+        app_id_or_slug = args.target
+        app = installer.db.get_app(int(app_id_or_slug)) if app_id_or_slug.isdigit() else installer.db.get_app_by_slug(app_id_or_slug)
+        if not app:
+            print(f"Error: App '{app_id_or_slug}' not found.")
+            sys.exit(1)
         installer.launch_app(app["id"])
-        print(f"✓ Launched {app['display_name']}.")
+        print(f"✓ Launched {app['display_name']}")
+        return
+
+    elif args.command == "import-discovered":
+        scanner = SystemScanner(installer.db, installer)
+        discovered = scanner.scan_all()
+        print(f"\n🔍 Discovered {len(discovered)} unmanaged app(s) or archive(s):")
+        for item in discovered:
+            print(f"  • [{item['source_type']}] {item['display_name']} -> {item['path']}")
+            if item.get("can_import_directly"):
+                try:
+                    res = scanner.import_discovered(item["key"])
+                    print(f"    ✓ Imported as '{res['display_name']}'")
+                except Exception as e:
+                    print(f"    ⚠ Import failed: {e}")
+        print("\n✨ Discovery scan & import complete.\n")
         return
 
     elif args.command == "clean":
-        cleaner = SystemCleaner()
         print("\n🔍 Scanning package manager caches and junk files...")
-        scan_res = cleaner.scan()
-        targets = scan_res["targets"]
+        scan_data = cleaner.scan()
 
-        if not targets:
-            print("✓ No cleanable caches or junk found. Your system is spotless!\n")
-            return
-
-        print("\n" + "=" * 85)
+        print(f"\n{'='*85}")
         print(f"{'ID':<14} {'NAME':<24} {'CATEGORY':<16} {'SIZE':<10} {'FILES':<8} {'PATH'}")
-        print("-" * 85)
-        for t in targets:
-            loc = t['path']
-            if len(loc) > 28:
-                loc = "..." + loc[-25:]
-            print(f"{t['id']:<14} {t['name'][:22]:<24} {t['category'][:14]:<16} {t['size_formatted']:<10} {str(t['file_count']):<8} {loc}")
-        print("=" * 85)
-        print(f"Total reclaimable space: {scan_res['total_size_formatted']} ({scan_res['total_files']} files)\n")
+        print(f"{'-'*85}")
+        for t in scan_data["targets"]:
+            p_str = t['path']
+            if len(p_str) > 28:
+                p_str = "..." + p_str[-25:]
+            print(f"{t['id']:<14} {t['name'][:22]:<24} {t['category'][:14]:<16} {t['size_formatted']:<10} {t['file_count']:<8} {p_str}")
+        print(f"{'='*85}")
+        print(f"Total reclaimable space: \033[1;32m{scan_data['total_size_formatted']}\033[0m ({scan_data['total_files']} files)\n")
+
+        if args.dry_run:
+            print("Dry run completed. No files were deleted.")
+            return
 
         to_clean = []
         if args.targets:
-            chosen = [x.strip() for x in args.targets.split(",") if x.strip()]
-            to_clean = [t["id"] for t in targets if t["id"] in chosen]
+            to_clean = [t.strip() for t in args.targets.split(",") if t.strip()]
         elif args.all:
-            to_clean = [t["id"] for t in targets if t.get("safe_to_clean", True)]
-        elif not args.dry_run:
+            to_clean = [t["id"] for t in scan_data["targets"]]
+        else:
+            print("Select targets to clean (comma-separated IDs, 'all' for everything, or 'q' to quit):")
             try:
-                ans = input(f"Clean all safe caches ({scan_res['total_size_formatted']})? [y/N]: ").strip().lower()
-                if ans in ('y', 'yes'):
-                    to_clean = [t["id"] for t in targets if t.get("safe_to_clean", True)]
-                else:
-                    print("Clean cancelled.")
+                user_in = input("> ").strip()
+                if not user_in or user_in.lower() == 'q':
+                    print("Cancelled.")
                     return
+                if user_in.lower() == 'all':
+                    to_clean = [t["id"] for t in scan_data["targets"]]
+                else:
+                    to_clean = [t.strip() for t in user_in.split(",") if t.strip()]
             except (KeyboardInterrupt, EOFError):
                 print("\nCancelled.")
                 return
 
         if to_clean:
-            print(f"\n🧹 Cleaning {len(to_clean)} cache target(s)...")
-            res = cleaner.clean(to_clean, interactive=True)
-            for r in res["results"]:
-                if r["success"]:
-                    print(f"  ✓ {r['name']}: Freed {r['freed_formatted']} ({r['freed_files']} files)")
-                elif r.get("needs_sudo"):
-                    print(f"  ℹ {r['name']} requires root privileges.")
-                    print(f"    Run manually: {r.get('sudo_command')}")
-                else:
-                    print(f"  ⚠ {r['name']} failed: {r.get('error')}")
+            res = cleaner.clean(to_clean)
             print(f"\n✨ Clean complete. Total space freed: {res['freed_formatted']}\n")
         return
 
@@ -427,7 +438,7 @@ Examples:
     if check_server_running(host, target_port):
         print(f"✓ TarGz Manager is already running at {url}. Opening browser tab...")
         if not args.no_browser:
-            webbrowser.open(url)
+            open_browser_tab(url)
         return
 
     port = args.port or find_free_port(target_port)
@@ -437,7 +448,7 @@ Examples:
     server = create_server(host=host, port=port, installer=installer, auto_shutdown=auto_shutdown)
 
     print("\n" + "=" * 65)
-    print("  📦  TarGz App Manager — Portable App & Tarball Manager")
+    print("  📦  Clinux, Linux Cleaner & Portable App Manager")
     print("=" * 65)
     print(f"  • Web UI URL:       \033[1;36m{url}\033[0m")
     print(f"  • Auto-Close:       {'Enabled (exits when tab is closed)' if auto_shutdown else 'Disabled (--keep-alive)'}")
@@ -451,7 +462,7 @@ Examples:
     if not args.no_browser:
         def open_browser():
             time.sleep(0.35)
-            webbrowser.open(url)
+            open_browser_tab(url)
         threading.Thread(target=open_browser, daemon=True).start()
 
     try:

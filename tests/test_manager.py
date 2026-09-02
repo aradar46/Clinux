@@ -220,7 +220,7 @@ class TestHttpServerApi(unittest.TestCase):
         with urllib.request.urlopen(req) as resp:
             self.assertEqual(resp.status, 200)
             content = resp.read().decode('utf-8')
-            self.assertIn("TarGz Manager", content)
+            self.assertIn("Clinux", content)
             self.assertIn("Install Tarball", content)
 
     def test_get_stats_and_system_info(self):
