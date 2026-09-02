@@ -26,6 +26,7 @@ from targz_manager.installer import (
 )
 from targz_manager.server import create_server
 from targz_manager.cleaner import SystemCleaner
+from targz_manager.ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
 
 
 def find_free_port(start_port: int = 8421) -> int:
@@ -175,6 +176,16 @@ Examples:
     p_clean.add_argument("--all", "-a", action="store_true", help="Clean all detected safe caches immediately")
     p_clean.add_argument("--targets", "-t", type=str, help="Comma-separated target IDs to clean (e.g. yay,pip,thumbnails)")
     p_clean.add_argument("--dry-run", action="store_true", help="Scan and list without deleting")
+
+    p_skills = subparsers.add_parser("skills", help="Manage AI agent skills across Claude, Antigravity, and Codex")
+    p_skills.add_argument("--activate", "-a", type=str, help="Skill key (e.g. science/literature-review) or category to activate")
+    p_skills.add_argument("--deactivate", "-d", type=str, help="Skill key or category to deactivate")
+    p_skills.add_argument("--category", "-c", action="store_true", help="Treat activate/deactivate target as category")
+    p_skills.add_argument("--targets", "-t", type=str, help="Comma-separated agent targets (claude, agy, gemini, codex)")
+
+    p_ai_storage = subparsers.add_parser("ai-storage", help="Inspect and manage local AI model weights and agent workspaces")
+    p_ai_storage.add_argument("--delete-model", type=str, help="Delete model by ID (e.g. hf:models--bert-base-uncased)")
+    p_ai_storage.add_argument("--clean-workspace", type=str, help="Clean workspace by ID (e.g. claude_projects, cursor_storage)")
 
     args = parser.parse_args()
 
@@ -429,6 +440,99 @@ Examples:
         if to_clean:
             res = cleaner.clean(to_clean)
             print(f"\n✨ Clean complete. Total space freed: {res['freed_formatted']}\n")
+        return
+
+    elif args.command == "skills":
+        sm = SkillManager()
+        tgt_list = [t.strip() for t in args.targets.split(",")] if args.targets else None
+
+        if args.activate:
+            if args.category:
+                res = sm.toggle_category(args.activate, active=True, targets=tgt_list)
+                print(f"✓ Activated category '{args.activate}' ({res.get('count', 0)} skills).")
+            else:
+                res = sm.activate_skill(args.activate, targets=tgt_list)
+                if res.get("success"):
+                    print(f"✓ Activated skill '{args.activate}' for: {', '.join(res.get('activated_targets', []))}")
+                else:
+                    print(f"✗ Failed to activate: {res.get('error') or res.get('errors')}")
+            return
+
+        if args.deactivate:
+            if args.category:
+                res = sm.toggle_category(args.deactivate, active=False, targets=tgt_list)
+                print(f"✓ Deactivated category '{args.deactivate}'.")
+            else:
+                res = sm.deactivate_skill(args.deactivate, targets=tgt_list)
+                if res.get("success"):
+                    print(f"✓ Deactivated skill '{args.deactivate}'.")
+                else:
+                    print(f"✗ Failed to deactivate: {res.get('error') or res.get('errors')}")
+            return
+
+        skills = sm.get_all_skills()
+        cats = sm.get_categories()
+        print("\n" + "=" * 85)
+        print(f"  AI AGENT SKILLS ({len(skills)} discovered across {len(cats)} categories)")
+        print("=" * 85)
+        print(f"{'STATUS':<8} {'CATEGORY':<20} {'SKILL NAME':<30} {'AGENTS'}")
+        print("-" * 85)
+        for s in skills:
+            status = "● ON" if s["active"] else "○ off"
+            active_ag = [k for k, v in s["active_targets"].items() if v]
+            ag_str = ", ".join(active_ag) if active_ag else "-"
+            print(f"{status:<8} {s['category'][:18]:<20} {s['name'][:28]:<30} {ag_str}")
+        print("=" * 85)
+        print("Commands:")
+        print("  python3 app.py skills --activate <category/name>")
+        print("  python3 app.py skills --deactivate <category/name>")
+        print("  python3 app.py skills --activate <category> --category\n")
+        return
+
+    elif args.command == "ai-storage":
+        storage = AIStorageManager()
+
+        if args.delete_model:
+            res = storage.delete_model(args.delete_model)
+            if res.get("success"):
+                print(f"✓ Deleted model '{args.delete_model}'. Freed: {res.get('freed_formatted', '-')}")
+            else:
+                print(f"✗ Failed to delete model: {res.get('error')}")
+            return
+
+        if args.clean_workspace:
+            res = storage.clean_workspace(args.clean_workspace)
+            if res.get("success"):
+                print(f"✓ Cleaned workspace '{args.clean_workspace}'. Freed: {res.get('freed_formatted')}")
+            else:
+                print(f"✗ Failed to clean workspace: {res.get('error')}")
+            return
+
+        data = storage.scan_all()
+        print("\n" + "=" * 80)
+        print("  LOCAL AI MODELS & WEIGHTS")
+        print("=" * 80)
+        if not data["models"]:
+            print("  No local Hugging Face, PyTorch, or Ollama models found.")
+        else:
+            print(f"{'SOURCE':<14} {'NAME':<42} {'SIZE':<12} {'ID'}")
+            print("-" * 80)
+            for m in data["models"]:
+                print(f"{m['source']:<14} {m['name'][:40]:<42} {m['size_formatted']:<12} {m['id']}")
+
+        print("\n" + "=" * 80)
+        print("  AI AGENT WORKSPACES & CACHES")
+        print("=" * 80)
+        if not data["workspaces"]:
+            print("  No agent workspaces detected.")
+        else:
+            print(f"{'ID':<18} {'NAME':<36} {'SIZE':<12} {'FILES'}")
+            print("-" * 80)
+            for w in data["workspaces"]:
+                print(f"{w['id']:<18} {w['name'][:34]:<36} {w['size_formatted']:<12} {w['file_count']}")
+
+        print("=" * 80)
+        print(f"Total AI Storage Footprint: \033[1;36m{data['total_size_formatted']}\033[0m\n")
         return
 
     target_port = args.port or 8421

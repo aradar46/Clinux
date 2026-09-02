@@ -278,5 +278,28 @@ class TestHttpServerApi(unittest.TestCase):
             self.assertIn("Updating existing install", data.get("output", ""))
 
 
+    def test_watchdog_disconnect_grace_and_cancel(self):
+        from targz_manager.server import ThreadedHTTPServer
+        srv = ThreadedHTTPServer(("127.0.0.1", 0), lambda *args: None, auto_shutdown=False, shutdown_timeout=1.0, disconnect_grace=0.4)
+        try:
+            # Simulate client connecting
+            srv.record_heartbeat("client-1")
+            self.assertTrue(srv.first_request_received)
+            self.assertIn("client-1", srv.active_clients)
+            self.assertIsNone(srv.disconnect_timestamp)
+
+            # Simulate client disconnecting (tab close beacon)
+            srv.record_disconnect("client-1")
+            self.assertNotIn("client-1", srv.active_clients)
+            self.assertIsNotNone(srv.disconnect_timestamp)
+
+            # Simulate page reload or reconnect cancelling the disconnect
+            srv.record_heartbeat("client-2")
+            self.assertIsNone(srv.disconnect_timestamp)
+            self.assertIn("client-2", srv.active_clients)
+        finally:
+            srv.server_close()
+
+
 if __name__ == "__main__":
     unittest.main()

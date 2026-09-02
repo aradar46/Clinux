@@ -36,6 +36,15 @@ class TarGzApp {
     this.pendingSudoTargets = [];
     this.isCleaning = false;
 
+    // AI Tooling & Skills State
+    this.aiSubTab = 'skills';
+    this.aiSkills = [];
+    this.aiCategories = [];
+    this.aiStorage = { models: [], workspaces: [] };
+    this.selectedAgentTargets = ['claude', 'agy'];
+    this.aiFilterCategory = 'all';
+    this.aiSkillSearchQuery = '';
+
     this.init();
   }
 
@@ -56,13 +65,24 @@ class TarGzApp {
     };
 
     sendPing();
-    setInterval(sendPing, 2500);
+    setInterval(sendPing, 3000);
 
-    window.addEventListener('pagehide', () => {
+    // Re-ping immediately whenever tab becomes visible again
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        sendPing();
+      }
+    });
+
+    // Notify server when tab or window is actually closing
+    const handleClose = () => {
       if (navigator.sendBeacon) {
         navigator.sendBeacon('/api/shutdown', JSON.stringify({ client_id: this.clientId }));
       }
-    });
+    };
+
+    window.addEventListener('beforeunload', handleClose);
+    window.addEventListener('pagehide', handleClose);
   }
 
   // =========================================================================
@@ -398,6 +418,7 @@ class TarGzApp {
     const taskApps = document.getElementById('taskTabApps');
     const taskCleaner = document.getElementById('taskTabCleaner');
     const taskDisc = document.getElementById('taskTabDiscovered');
+    const taskAI = document.getElementById('taskTabAI');
 
     const tabAll = document.getElementById('tabAllApps');
     const tabIgnored = document.getElementById('tabIgnored');
@@ -405,10 +426,12 @@ class TarGzApp {
     const appsGrid = document.getElementById('appsGrid');
     const emptyState = document.getElementById('emptyState');
     const cleanerView = document.getElementById('cleanerView');
+    const aiView = document.getElementById('aiView');
 
     if (taskApps) taskApps.classList.toggle('active', tab === 'all' || tab === 'ignored');
     if (taskCleaner) taskCleaner.classList.toggle('active', tab === 'cleaner');
     if (taskDisc) taskDisc.classList.toggle('active', tab === 'discovered');
+    if (taskAI) taskAI.classList.toggle('active', tab === 'ai');
 
     if (tabAll) tabAll.classList.toggle('active', tab === 'all');
     if (tabIgnored) tabIgnored.classList.toggle('active', tab === 'ignored');
@@ -417,10 +440,19 @@ class TarGzApp {
       if (appsGrid) appsGrid.style.display = 'none';
       if (emptyState) emptyState.style.display = 'none';
       if (controlsBar) controlsBar.style.display = 'none';
+      if (aiView) aiView.style.display = 'none';
       if (cleanerView) cleanerView.style.display = 'flex';
       this.scanCleaner(false);
+    } else if (tab === 'ai') {
+      if (appsGrid) appsGrid.style.display = 'none';
+      if (emptyState) emptyState.style.display = 'none';
+      if (controlsBar) controlsBar.style.display = 'none';
+      if (cleanerView) cleanerView.style.display = 'none';
+      if (aiView) aiView.style.display = 'flex';
+      this.loadAIData();
     } else {
       if (cleanerView) cleanerView.style.display = 'none';
+      if (aiView) aiView.style.display = 'none';
       if (controlsBar) controlsBar.style.display = 'flex';
       if (appsGrid) appsGrid.style.display = 'grid';
       if (tab === 'discovered' && this.discoveredApps.length === 0) {
@@ -1896,6 +1928,390 @@ class TarGzApp {
           Update
         `;
       }
+    }
+  }
+
+  // =========================================================================
+  // AI Tooling & Skills Manager
+  // =========================================================================
+
+  setAISubTab(subTab) {
+    this.aiSubTab = subTab;
+    const tabSkills = document.getElementById('aiTabSkills');
+    const tabStorage = document.getElementById('aiTabStorage');
+    const secSkills = document.getElementById('aiSkillsSection');
+    const secStorage = document.getElementById('aiStorageSection');
+    const actionsRight = document.getElementById('aiSkillsActions');
+
+    if (tabSkills) tabSkills.classList.toggle('active', subTab === 'skills');
+    if (tabStorage) tabStorage.classList.toggle('active', subTab === 'storage');
+
+    if (subTab === 'skills') {
+      if (secSkills) secSkills.style.display = 'block';
+      if (secStorage) secStorage.style.display = 'none';
+      if (actionsRight) actionsRight.style.display = 'flex';
+      if (this.aiSkills.length === 0) {
+        this.fetchAISkills();
+      }
+    } else {
+      if (secSkills) secSkills.style.display = 'none';
+      if (secStorage) secStorage.style.display = 'block';
+      if (actionsRight) actionsRight.style.display = 'none';
+      this.fetchAIStorage(false);
+    }
+  }
+
+  async loadAIData() {
+    await Promise.all([
+      this.fetchAISkills(),
+      this.fetchAIStorage(false)
+    ]);
+  }
+
+  async rescanAI() {
+    this.toast('Scanning AI skills and storage...', 'info');
+    await Promise.all([
+      this.fetchAISkills(),
+      this.fetchAIStorage(true)
+    ]);
+    this.toast('AI scan refreshed', 'success');
+  }
+
+  async fetchAISkills() {
+    try {
+      const res = await fetch('/api/ai/skills');
+      if (!res.ok) throw new Error('Failed to load skills');
+      const data = await res.json();
+      this.aiSkills = data.skills || [];
+      this.aiCategories = data.categories || [];
+
+      // Update badges
+      const badge = document.getElementById('aiSkillsBadge');
+      const countPill = document.getElementById('aiSkillsCount');
+      const activeCount = this.aiSkills.filter(s => s.active).length;
+      if (badge) badge.textContent = `${activeCount}/${this.aiSkills.length}`;
+      if (countPill) countPill.textContent = `${activeCount}/${this.aiSkills.length}`;
+
+      this.populateAICategories();
+      this.renderAISkills();
+    } catch (e) {
+      console.error('fetchAISkills error:', e);
+    }
+  }
+
+  populateAICategories() {
+    const select = document.getElementById('aiCategoryFilter');
+    if (!select) return;
+
+    const currentVal = this.aiFilterCategory;
+    let html = '<option value="all">All Categories (' + this.aiSkills.length + ')</option>';
+    this.aiCategories.forEach(cat => {
+      const count = this.aiSkills.filter(s => s.category === cat).length;
+      html += `<option value="${this.escapeHtml(cat)}">${this.escapeHtml(cat)} (${count})</option>`;
+    });
+    select.innerHTML = html;
+    select.value = currentVal;
+  }
+
+  updateAgentTargets() {
+    const claude = document.getElementById('agentTargetClaude')?.checked;
+    const agy = document.getElementById('agentTargetAgy')?.checked;
+    const gemini = document.getElementById('agentTargetGemini')?.checked;
+    const codex = document.getElementById('agentTargetCodex')?.checked;
+
+    const targets = [];
+    if (claude) targets.push('claude');
+    if (agy) targets.push('agy');
+    if (gemini) targets.push('gemini');
+    if (codex) targets.push('codex');
+
+    this.selectedAgentTargets = targets;
+  }
+
+  filterSkills(query) {
+    this.aiSkillSearchQuery = (query || '').toLowerCase().trim();
+    this.renderAISkills();
+  }
+
+  filterSkillCategory(cat) {
+    this.aiFilterCategory = cat || 'all';
+    this.renderAISkills();
+  }
+
+  getFilteredSkills() {
+    return this.aiSkills.filter(s => {
+      if (this.aiFilterCategory !== 'all' && s.category !== this.aiFilterCategory) {
+        return false;
+      }
+      if (this.aiSkillSearchQuery) {
+        const text = `${s.name} ${s.category} ${s.description}`.toLowerCase();
+        if (!text.includes(this.aiSkillSearchQuery)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
+  renderAISkills() {
+    const container = document.getElementById('aiSkillsGrid');
+    if (!container) return;
+
+    const filtered = this.getFilteredSkills();
+
+    if (filtered.length === 0) {
+      container.innerHTML = `
+        <div style="grid-column: 1 / -1; padding: 2.5rem; text-align: center; color: var(--text-muted);">
+          <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🔍</div>
+          <div>No skills match your current category or search filter.</div>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = filtered.map(skill => {
+      const activeTargets = skill.active_targets || {};
+      const targetTags = Object.keys(activeTargets).map(tgt => {
+        const isTgtActive = activeTargets[tgt];
+        return `<span class="ai-agent-tag ${isTgtActive ? 'active' : ''}">${this.escapeHtml(tgt)}</span>`;
+      }).join('');
+
+      return `
+        <div class="ai-skill-card ${skill.active ? 'active' : ''}" id="card-${this.escapeHtml(skill.key.replace('/', '-'))}">
+          <div class="ai-skill-card-top">
+            <div>
+              <div class="ai-skill-card-title">
+                ${this.escapeHtml(skill.display_name || skill.name)}
+              </div>
+              <span class="ai-skill-badge">${this.escapeHtml(skill.category)}</span>
+            </div>
+            <label class="ai-switch" title="Toggle skill active state">
+              <input type="checkbox" ${skill.active ? 'checked' : ''} onchange="app.toggleSkill('${this.escapeHtml(skill.key)}', this.checked)">
+              <span class="ai-slider"></span>
+            </label>
+          </div>
+          <div class="ai-skill-desc">
+            ${this.escapeHtml(skill.description || 'No description provided.')}
+          </div>
+          <div class="ai-skill-card-footer">
+            <div class="ai-agent-badges">
+              ${targetTags}
+            </div>
+            <span style="font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono);">
+              ${skill.active ? '✓ Active' : '○ Inactive'}
+            </span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async toggleSkill(skillKey, active) {
+    this.updateAgentTargets();
+    const targets = this.selectedAgentTargets.length > 0 ? this.selectedAgentTargets : ['claude', 'agy'];
+
+    // Optimistic UI update
+    const skill = this.aiSkills.find(s => s.key === skillKey);
+    if (skill) {
+      skill.active = active;
+      targets.forEach(tgt => {
+        if (skill.active_targets) skill.active_targets[tgt] = active;
+      });
+      this.renderAISkills();
+    }
+
+    try {
+      const res = await fetch('/api/ai/skills/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: skillKey, active, targets })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || (data.errors && data.errors.join(', ')) || 'Toggle failed');
+      }
+      this.toast(`${active ? 'Activated' : 'Deactivated'} ${skillKey}`, 'success');
+      await this.fetchAISkills();
+    } catch (e) {
+      this.toast(`Failed to update skill: ${e.message}`, 'error');
+      await this.fetchAISkills();
+    }
+  }
+
+  async bulkToggleCurrentCategory(active) {
+    this.updateAgentTargets();
+    const targets = this.selectedAgentTargets.length > 0 ? this.selectedAgentTargets : ['claude', 'agy'];
+    const cat = this.aiFilterCategory;
+
+    if (cat === 'all') {
+      const confirmAll = confirm(`${active ? 'Activate' : 'Deactivate'} ALL skills across all categories?`);
+      if (!confirmAll) return;
+
+      this.toast(`${active ? 'Activating' : 'Deactivating'} all categories...`, 'info');
+      for (const c of this.aiCategories) {
+        await fetch('/api/ai/skills/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category: c, active, targets })
+        });
+      }
+      this.toast(`Updated all skills`, 'success');
+      await this.fetchAISkills();
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/ai/skills/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: cat, active, targets })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Bulk toggle failed');
+      }
+      this.toast(`${active ? 'Activated' : 'Deactivated'} category '${cat}'`, 'success');
+      await this.fetchAISkills();
+    } catch (e) {
+      this.toast(`Failed to update category: ${e.message}`, 'error');
+    }
+  }
+
+  async fetchAIStorage(force) {
+    try {
+      const res = await fetch('/api/ai/storage');
+      if (!res.ok) throw new Error('Failed to load storage data');
+      const data = await res.json();
+      this.aiStorage = data;
+
+      const totalFormatted = data.total_size_formatted || '0 B';
+      const storageBadge = document.getElementById('aiStorageTotal');
+      const heroSize = document.getElementById('aiStorageHeroSize');
+      if (storageBadge) storageBadge.textContent = totalFormatted;
+      if (heroSize) heroSize.textContent = totalFormatted;
+
+      this.renderAIStorage();
+    } catch (e) {
+      console.error('fetchAIStorage error:', e);
+    }
+  }
+
+  renderAIStorage() {
+    const modelsList = document.getElementById('aiModelsList');
+    const workspacesList = document.getElementById('aiWorkspacesList');
+    const modelsCount = document.getElementById('aiModelsCount');
+    const workspacesCount = document.getElementById('aiWorkspacesCount');
+
+    const models = this.aiStorage.models || [];
+    const workspaces = this.aiStorage.workspaces || [];
+
+    if (modelsCount) modelsCount.textContent = `${models.length} model${models.length === 1 ? '' : 's'}`;
+    if (workspacesCount) workspacesCount.textContent = `${workspaces.length} target${workspaces.length === 1 ? '' : 's'}`;
+
+    if (modelsList) {
+      if (models.length === 0) {
+        modelsList.innerHTML = `
+          <div style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.8rem;">
+            No local Hugging Face, Ollama, or PyTorch models detected.
+          </div>
+        `;
+      } else {
+        modelsList.innerHTML = models.map(m => {
+          const sourceBadgeColor = m.source === 'huggingface' ? 'var(--accent-amber)' : (m.source === 'ollama' ? 'var(--accent-cyan)' : 'var(--accent-emerald)');
+          return `
+            <div class="cleaner-target-row" style="align-items: center;">
+              <div class="cleaner-row-left" style="gap: 0.75rem;">
+                <span class="ai-skill-badge" style="color:${sourceBadgeColor}; border-color:currentColor;">${this.escapeHtml(m.source)}</span>
+                <div>
+                  <div class="cleaner-target-name">${this.escapeHtml(m.name)}</div>
+                  <div class="cleaner-target-path" title="${this.escapeHtml(m.path)}">${this.escapeHtml(m.path)}</div>
+                </div>
+              </div>
+              <div class="cleaner-row-right" style="gap: 1rem;">
+                <span class="cleaner-target-size">${this.escapeHtml(m.size_formatted)}</span>
+                <button class="btn btn-secondary btn-sm" onclick="app.deleteAIModel('${this.escapeHtml(m.id)}', '${this.escapeHtml(m.name)}')" title="Delete model weights">
+                  <svg class="icon" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  Delete
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    if (workspacesList) {
+      if (workspaces.length === 0) {
+        workspacesList.innerHTML = `
+          <div style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.8rem;">
+            No agent workspaces or project logs detected.
+          </div>
+        `;
+      } else {
+        workspacesList.innerHTML = workspaces.map(w => `
+          <div class="cleaner-target-row" style="align-items: center;">
+            <div class="cleaner-row-left">
+              <div>
+                <div class="cleaner-target-name">${this.escapeHtml(w.name)}</div>
+                <div class="cleaner-target-path" style="color:var(--text-muted); font-size:0.75rem;">${this.escapeHtml(w.description || w.path)}</div>
+              </div>
+            </div>
+            <div class="cleaner-row-right" style="gap: 1rem;">
+              <span class="cleaner-target-size">${this.escapeHtml(w.size_formatted)}</span>
+              <button class="btn btn-secondary btn-sm" onclick="app.cleanAIWorkspace('${this.escapeHtml(w.id)}', '${this.escapeHtml(w.name)}')" title="Clean workspace logs and cache">
+                <svg class="icon" viewBox="0 0 24 24"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 5l5 5"/><path d="m22 20-2 2-4-4 2-2 4 4Z"/></svg>
+                Clean
+              </button>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+  }
+
+  async deleteAIModel(modelId, modelName) {
+    if (!confirm(`Are you sure you want to delete model "${modelName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      this.toast(`Deleting ${modelName}...`, 'info');
+      const res = await fetch('/api/ai/storage/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_id: modelId })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete model');
+      }
+      this.toast(`Deleted ${modelName}. Freed: ${data.freed_formatted || 'Done'}`, 'success');
+      await this.fetchAIStorage(true);
+    } catch (e) {
+      this.toast(`Delete failed: ${e.message}`, 'error');
+    }
+  }
+
+  async cleanAIWorkspace(workspaceId, workspaceName) {
+    if (!confirm(`Clean workspace logs for "${workspaceName}"? This removes historical conversation caches and temporary files.`)) {
+      return;
+    }
+
+    try {
+      this.toast(`Cleaning ${workspaceName}...`, 'info');
+      const res = await fetch('/api/ai/storage/clean', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: workspaceId })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to clean workspace');
+      }
+      this.toast(`Cleaned ${workspaceName}. Freed: ${data.freed_formatted}`, 'success');
+      await this.fetchAIStorage(true);
+    } catch (e) {
+      this.toast(`Clean failed: ${e.message}`, 'error');
     }
   }
 }

@@ -20,6 +20,7 @@ from .installer import (
 )
 from .scanner import SystemScanner
 from .cleaner import SystemCleaner
+from .ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
 
 import time
 import threading
@@ -31,15 +32,24 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, *args, auto_shutdown: bool = False, shutdown_timeout: float = 7.0, **kwargs):
+    def __init__(
+        self,
+        *args,
+        auto_shutdown: bool = False,
+        shutdown_timeout: float = 60.0,
+        disconnect_grace: float = 8.0,
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
         self.start_time = time.time()
         self.last_heartbeat = time.time()
         self.first_request_received = False
         self.auto_shutdown = auto_shutdown
         self.shutdown_timeout = shutdown_timeout
+        self.disconnect_grace = disconnect_grace
         self.running = True
         self.active_clients = set()
+        self.disconnect_timestamp = None
 
         if self.auto_shutdown:
             self._start_watchdog()
@@ -48,11 +58,14 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
         self.first_request_received = True
         self.last_heartbeat = time.time()
         self.active_clients.add(client_id)
+        # Any heartbeat cancels pending disconnect
+        self.disconnect_timestamp = None
 
     def record_disconnect(self, client_id: str = "default"):
         self.active_clients.discard(client_id)
         if not self.active_clients:
-            self.last_heartbeat = time.time() - (self.shutdown_timeout - 1.2)
+            if self.disconnect_timestamp is None:
+                self.disconnect_timestamp = time.time()
 
     def _start_watchdog(self):
         def watchdog():
@@ -60,7 +73,12 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
                 time.sleep(1.0)
                 now = time.time()
                 if self.first_request_received:
-                    if now - self.last_heartbeat > self.shutdown_timeout:
+                    if self.disconnect_timestamp is not None:
+                        if now - self.disconnect_timestamp > self.disconnect_grace:
+                            self.running = False
+                            threading.Thread(target=self.shutdown, daemon=True).start()
+                            break
+                    elif now - self.last_heartbeat > self.shutdown_timeout:
                         self.running = False
                         threading.Thread(target=self.shutdown, daemon=True).start()
                         break
@@ -80,6 +98,8 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         self.db = self.installer.db
         self.scanner = SystemScanner(self.db, self.installer)
         self.cleaner = SystemCleaner()
+        self.skill_manager = SkillManager()
+        self.ai_storage = AIStorageManager()
         super().__init__(*args, **kwargs)
 
     def log_message(self, format, *args):
@@ -95,11 +115,11 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         if not origin:
             return True
         allowed_prefixes = (
-            'http://127.0.0.1:',
-            'http://localhost:',
-            'http://[::1]:',
-            'https://127.0.0.1:',
-            'https://localhost:'
+            'http://127.0.0.1',
+            'http://localhost',
+            'http://[::1]',
+            'https://127.0.0.1',
+            'https://localhost'
         )
         return any(origin.startswith(prefix) for prefix in allowed_prefixes)
 
@@ -219,6 +239,28 @@ class AppRequestHandler(BaseHTTPRequestHandler):
 
         elif path == '/api/cleaner/scan':
             results = self.cleaner.scan()
+            self._send_json(results)
+            return
+
+        elif path == '/api/ai/skills':
+            skills = self.skill_manager.get_all_skills()
+            categories = self.skill_manager.get_categories()
+            self._send_json({
+                "skills": skills,
+                "categories": categories,
+                "targets": list(self.skill_manager.target_dirs.keys()),
+                "total_skills": len(skills),
+                "active_skills": sum(1 for s in skills if s["active"])
+            })
+            return
+
+        elif path == '/api/ai/storage':
+            results = self.ai_storage.scan_all()
+            self._send_json(results)
+            return
+
+        elif path == '/api/ai/status':
+            results = AIRuntimeDetector.get_runtime_status()
             self._send_json(results)
             return
 
@@ -433,6 +475,43 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 target_ids = body.get('targets', [])
                 sudo_password = body.get('password')
                 res = self.cleaner.clean(target_ids, sudo_password=sudo_password)
+                self._send_json(res)
+                return
+
+            elif path == '/api/ai/skills/toggle':
+                category = body.get('category')
+                key = body.get('key')
+                active = body.get('active', True)
+                targets = body.get('targets')
+
+                if category:
+                    res = self.skill_manager.toggle_category(category, active=active, targets=targets)
+                elif key:
+                    if active:
+                        res = self.skill_manager.activate_skill(key, targets=targets)
+                    else:
+                        res = self.skill_manager.deactivate_skill(key, targets=targets)
+                else:
+                    self._send_error_json("Either 'key' or 'category' is required", status=400)
+                    return
+                self._send_json(res)
+                return
+
+            elif path == '/api/ai/storage/delete':
+                model_id = body.get('model_id')
+                if not model_id:
+                    self._send_error_json("model_id is required", status=400)
+                    return
+                res = self.ai_storage.delete_model(model_id)
+                self._send_json(res)
+                return
+
+            elif path == '/api/ai/storage/clean':
+                workspace_id = body.get('workspace_id')
+                if not workspace_id:
+                    self._send_error_json("workspace_id is required", status=400)
+                    return
+                res = self.ai_storage.clean_workspace(workspace_id)
                 self._send_json(res)
                 return
 
@@ -716,11 +795,24 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._send_error_json("Invalid DELETE endpoint", status=404)
 
 
-def create_server(host: str = "127.0.0.1", port: int = 8421, installer: Optional[Installer] = None, auto_shutdown: bool = False, shutdown_timeout: float = 7.0) -> ThreadedHTTPServer:
+def create_server(
+    host: str = "127.0.0.1",
+    port: int = 8421,
+    installer: Optional[Installer] = None,
+    auto_shutdown: bool = False,
+    shutdown_timeout: float = 60.0,
+    disconnect_grace: float = 8.0,
+) -> ThreadedHTTPServer:
     inst = installer or Installer()
 
     def handler_factory(*args, **kwargs):
         return AppRequestHandler(*args, installer=inst, **kwargs)
 
-    server = ThreadedHTTPServer((host, port), handler_factory, auto_shutdown=auto_shutdown, shutdown_timeout=shutdown_timeout)
+    server = ThreadedHTTPServer(
+        (host, port),
+        handler_factory,
+        auto_shutdown=auto_shutdown,
+        shutdown_timeout=shutdown_timeout,
+        disconnect_grace=disconnect_grace,
+    )
     return server
