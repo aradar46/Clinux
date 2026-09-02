@@ -508,7 +508,7 @@ class TarGzApp {
       : null;
 
     const iconHtml = iconUrl
-      ? `<img src="${iconUrl}" onerror="this.onerror=null; this.parentElement.innerText='${this.getMonogram(item.display_name)}';" alt="${this.escapeHtml(item.display_name)}">`
+      ? `<img class="app-icon-img" style="width:36px; height:36px; max-width:36px; max-height:36px; object-fit:contain; display:block;" src="${iconUrl}" onerror="this.onerror=null; this.parentElement.innerText='${this.getMonogram(item.display_name)}';" alt="${this.escapeHtml(item.display_name)}">`
       : this.getMonogram(item.display_name);
 
     const sudoBadge = item.needs_sudo
@@ -578,7 +578,7 @@ class TarGzApp {
 
   renderAppCard(app) {
     const iconHtml = app.icon_path && app.icon_exists
-      ? `<img src="${encodeURI('/api/apps/' + app.id + '/icon?t=' + Date.now())}" onerror="this.onerror=null; this.parentElement.innerText='${this.getMonogram(app.display_name)}';" alt="${this.escapeHtml(app.display_name)}">`
+      ? `<img class="app-icon-img" style="width:36px; height:36px; max-width:36px; max-height:36px; object-fit:contain; display:block;" src="${encodeURI('/api/apps/' + app.id + '/icon?t=' + Date.now())}" onerror="this.onerror=null; this.parentElement.innerText='${this.getMonogram(app.display_name)}';" alt="${this.escapeHtml(app.display_name)}">`
       : this.getMonogram(app.display_name);
 
     const statusDotClass = app.status_color || 'green';

@@ -588,12 +588,36 @@ body {
 .app-icon {
   width: 44px;
   height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 44px;
+  max-height: 44px;
   border-radius: 2px;
-  object-fit: contain;
   background: var(--bg-subtle);
-  border: 1px solid var(--border-color);
-  padding: 4px;
+  border: 2px solid var(--border-color);
+  padding: 3px;
   flex-shrink: 0;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  position: relative;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: var(--accent-emerald);
+}
+
+.app-icon img,
+.app-icon-img,
+.app-icon svg {
+  width: 36px !important;
+  height: 36px !important;
+  max-width: 36px !important;
+  max-height: 36px !important;
+  object-fit: contain !important;
+  display: block !important;
+  margin: auto !important;
 }
 
 .app-title-area {
