@@ -16,6 +16,7 @@ mkdir -p "$(dirname "$INSTALL_DIR")"
 
 if [ -d "$INSTALL_DIR/.git" ]; then
   echo "Updating existing install at $INSTALL_DIR..."
+  git -C "$INSTALL_DIR" reset --hard HEAD
   git -C "$INSTALL_DIR" pull --ff-only
 elif command -v git >/dev/null 2>&1; then
   echo "Cloning TarGz Manager into $INSTALL_DIR..."
