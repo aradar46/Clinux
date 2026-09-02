@@ -5,6 +5,7 @@ import time
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -256,6 +257,25 @@ class TestHttpServerApi(unittest.TestCase):
                 self.fail("Expected 403 Forbidden for cross-origin request")
         except urllib.error.HTTPError as e:
             self.assertEqual(e.code, 403)
+
+    @mock.patch("targz_manager.server.subprocess.run")
+    def test_self_update_api(self, mock_run):
+        mock_proc = mock.MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout = "Updating existing install...\nDone."
+        mock_proc.stderr = ""
+        mock_run.return_value = mock_proc
+
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/api/self-update",
+            data=json.dumps({}).encode('utf-8'),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode('utf-8'))
+            self.assertTrue(data.get("success"))
+            self.assertIn("Updating existing install", data.get("output", ""))
 
 
 if __name__ == "__main__":

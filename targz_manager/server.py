@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import subprocess
 import mimetypes
 import tempfile
 import urllib.parse
@@ -433,6 +434,50 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 sudo_password = body.get('password')
                 res = self.cleaner.clean(target_ids, sudo_password=sudo_password)
                 self._send_json(res)
+                return
+
+            elif path == '/api/self-update':
+                cmd = "curl -fsSL https://raw.githubusercontent.com/aradar46/targz-manager/main/install.sh | bash"
+                env = os.environ.copy()
+                env["HOME"] = str(Path.home())
+                env["PATH"] = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+
+                cwd = Path.cwd()
+                local_pull_out = ""
+                if (cwd / ".git").exists() and (cwd / "targz_manager").exists():
+                    try:
+                        pull_res = subprocess.run(
+                            ["git", "pull", "--ff-only"],
+                            cwd=str(cwd),
+                            capture_output=True,
+                            text=True,
+                            timeout=30
+                        )
+                        local_pull_out = (pull_res.stdout + pull_res.stderr).strip()
+                    except Exception as e:
+                        local_pull_out = f"Git pull notice: {e}"
+
+                try:
+                    res = subprocess.run(
+                        cmd,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                        env=env
+                    )
+                    combined_output = "\n".join(filter(None, [local_pull_out, res.stdout, res.stderr])).strip()
+                    self._send_json({
+                        "success": res.returncode == 0,
+                        "returncode": res.returncode,
+                        "output": combined_output or "Update completed."
+                    })
+                except Exception as e:
+                    self._send_json({
+                        "success": False,
+                        "error": str(e),
+                        "output": local_pull_out
+                    }, status=500)
                 return
 
             elif path == '/api/apps/scan-directory':
