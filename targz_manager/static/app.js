@@ -48,6 +48,7 @@ class TarGzApp {
     await this.refreshStats();
     await this.fetchDiscovered();
     this.scanCleaner(false);
+    this.refreshApps();
   }
 
   startHeartbeat() {
@@ -427,6 +428,9 @@ class TarGzApp {
       if (cleanerView) cleanerView.style.display = 'none';
       if (controlsBar) controlsBar.style.display = 'flex';
       if (appsGrid) appsGrid.style.display = 'grid';
+      if (tab === 'discovered' && this.discoveredApps.length === 0) {
+        this.fetchDiscovered();
+      }
       this.renderApps();
     }
   }
