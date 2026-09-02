@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Clinux - Linux Cleaner & Portable App Manager
-#   curl -fsSL https://raw.githubusercontent.com/aradar46/targz-manager/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/aradar46/Clinux/main/install.sh | bash
 set -e
 
-REPO_URL="https://github.com/aradar46/targz-manager.git"
-TARBALL_URL="https://github.com/aradar46/targz-manager/archive/refs/heads/main.tar.gz"
+REPO_URL="https://github.com/aradar46/Clinux.git"
+TARBALL_URL="https://github.com/aradar46/Clinux/archive/refs/heads/main.tar.gz"
 INSTALL_DIR="$HOME/.local/opt/clinux"
 
 if ! command -v python3 >/dev/null 2>&1; then

@@ -56,6 +56,15 @@ class DotfilesManager:
         """
         Selectively stow, unstow, or restow an individual package.
         """
+        if not package or "/" in package or "\\" in package or ".." in package or package.startswith("."):
+            return {
+                "success": False,
+                "command": f"{action} {package}",
+                "output": "",
+                "returncode": -1,
+                "error": f"Invalid package name '{package}'. Path traversal and hidden folders not allowed.",
+            }
+
         pkg_path = self.repo_dir / package
         if not pkg_path.exists() or not pkg_path.is_dir():
             return {

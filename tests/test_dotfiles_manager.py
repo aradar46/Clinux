@@ -65,6 +65,11 @@ class TestDotfilesManager(unittest.TestCase):
         self.assertFalse(res["success"])
         self.assertIn("required", res["error"].lower())
 
+    def test_selective_stow_rejects_path_traversal(self):
+        res = self.mgr.run_command("stow", package="../../etc")
+        self.assertFalse(res["success"])
+        self.assertIn("not allowed", res["error"].lower())
+
     def test_run_allowed_commands(self):
         res = self.mgr.run_command("check")
         self.assertTrue(res["success"])

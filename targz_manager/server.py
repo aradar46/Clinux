@@ -534,7 +534,7 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 return
 
             elif path == '/api/self-update':
-                cmd = "curl -fsSL https://raw.githubusercontent.com/aradar46/targz-manager/main/install.sh | bash"
+                cmd = "curl -fsSL https://raw.githubusercontent.com/aradar46/Clinux/main/install.sh | bash"
                 env = os.environ.copy()
                 env["HOME"] = str(Path.home())
                 env["PATH"] = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
