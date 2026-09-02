@@ -43,11 +43,6 @@ class TarGzApp {
     this.setupTheme();
     this.setupEventListeners();
     this.startHeartbeat();
-    await this.fetchSystemInfo();
-    await this.refreshApps();
-    await this.refreshStats();
-    await this.fetchDiscovered();
-    this.scanCleaner(false);
     this.refreshApps();
   }
 
