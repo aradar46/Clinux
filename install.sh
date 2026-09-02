@@ -20,6 +20,7 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   git -C "$INSTALL_DIR" pull --ff-only
 elif command -v git >/dev/null 2>&1; then
   echo "Cloning Clinux into $INSTALL_DIR..."
+  rm -rf "$INSTALL_DIR"
   git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
 else
   echo "Downloading Clinux into $INSTALL_DIR..."
