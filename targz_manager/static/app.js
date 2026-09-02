@@ -1861,50 +1861,13 @@ class TarGzApp {
   // =========================================================================
   // Self Update
   // =========================================================================
-  openSelfUpdateModal() {
-    const outContainer = document.getElementById('selfUpdateOutputContainer');
-    const outEl = document.getElementById('selfUpdateOutput');
-    const statusEl = document.getElementById('selfUpdateStatus');
-    const actionBtn = document.getElementById('selfUpdateActionBtn');
-
-    if (outContainer) outContainer.style.display = 'none';
-    if (outEl) outEl.textContent = '';
-    if (statusEl) statusEl.innerHTML = '';
-    if (actionBtn) {
-      actionBtn.disabled = false;
-      actionBtn.innerHTML = `
-        <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-        Update Now
-      `;
-      actionBtn.onclick = () => this.runSelfUpdate();
+  async triggerDirectUpdate() {
+    const btn = document.getElementById('updateSelfBtn');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<svg class="icon spin" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Updating...`;
     }
-
-    this.openModal('selfUpdateModal');
-  }
-
-  copySelfUpdateCommand() {
-    const codeEl = document.getElementById('selfUpdateCommandText');
-    const text = codeEl ? codeEl.textContent : 'curl -fsSL https://raw.githubusercontent.com/aradar46/targz-manager/main/install.sh | bash';
-    navigator.clipboard.writeText(text).then(() => {
-      this.toast('Update command copied to clipboard!', 'success');
-    }).catch(() => {
-      this.toast('Failed to copy. Please select and copy manually.', 'error');
-    });
-  }
-
-  async runSelfUpdate() {
-    const actionBtn = document.getElementById('selfUpdateActionBtn');
-    const outContainer = document.getElementById('selfUpdateOutputContainer');
-    const outEl = document.getElementById('selfUpdateOutput');
-    const statusEl = document.getElementById('selfUpdateStatus');
-
-    if (actionBtn) {
-      actionBtn.disabled = true;
-      actionBtn.innerHTML = `<svg class="icon spin" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Updating...`;
-    }
-    if (statusEl) {
-      statusEl.innerHTML = `<span style="color:var(--text-secondary);">Downloading and applying updates...</span>`;
-    }
+    this.toast('Updating Clinux from GitHub...', 'info');
 
     try {
       const res = await fetch('/api/self-update', {
@@ -1912,45 +1875,28 @@ class TarGzApp {
         headers: { 'Content-Type': 'application/json' }
       });
       const data = await res.json();
-
-      if (outContainer) outContainer.style.display = 'block';
-      if (outEl) outEl.textContent = data.output || data.error || 'Done';
-
       if (res.ok && data.success) {
-        if (statusEl) {
-          statusEl.innerHTML = `<span style="color:var(--accent-emerald); font-weight:600;">✓ Update completed successfully.</span>`;
-        }
-        if (actionBtn) {
-          actionBtn.disabled = false;
-          actionBtn.innerHTML = `
-            <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
-            Reload Page
-          `;
-          actionBtn.onclick = () => window.location.reload();
-        }
-        this.toast('Clinux updated successfully!', 'success');
+        this.toast('Clinux updated successfully! Reloading...', 'success');
+        setTimeout(() => window.location.reload(), 1200);
       } else {
-        if (statusEl) {
-          statusEl.innerHTML = `<span style="color:var(--accent-rose); font-weight:600;">⚠ Update encountered an issue. See output above.</span>`;
+        this.toast('Update failed: ' + (data.error || 'Check terminal'), 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = `
+            <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+            Update
+          `;
         }
-        if (actionBtn) {
-          actionBtn.disabled = false;
-          actionBtn.innerHTML = `Retry Update`;
-          actionBtn.onclick = () => this.runSelfUpdate();
-        }
-        this.toast('Update failed. You can run the command in your terminal.', 'error');
       }
     } catch (e) {
-      console.error('Self update failed:', e);
-      if (statusEl) {
-        statusEl.innerHTML = `<span style="color:var(--accent-rose);">Network error: ${this.escapeHtml(e.message)}</span>`;
-      }
-      if (actionBtn) {
-        actionBtn.disabled = false;
-        actionBtn.innerHTML = `Retry Update`;
-        actionBtn.onclick = () => this.runSelfUpdate();
-      }
       this.toast('Update request failed: ' + e.message, 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `
+          <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+          Update
+        `;
+      }
     }
   }
 }

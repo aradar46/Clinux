@@ -846,10 +846,14 @@ body {
   z-index: 100;
   background: rgba(5, 7, 10, 0.75);
   backdrop-filter: blur(2px);
-  display: flex;
+  display: none !important;
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
+}
+
+.modal-backdrop.open {
+  display: flex !important;
 }
 
 .modal-dialog {
