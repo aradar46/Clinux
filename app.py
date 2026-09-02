@@ -188,8 +188,9 @@ Examples:
     p_ai_storage.add_argument("--delete-model", type=str, help="Delete model by ID (e.g. hf:models--bert-base-uncased)")
     p_ai_storage.add_argument("--clean-workspace", type=str, help="Clean workspace by ID (e.g. claude_projects, cursor_storage)")
 
-    p_dotfiles = subparsers.add_parser("dotfiles", help="Manage dotfiles using ~/.dotfiles/dotfiles script")
-    p_dotfiles.add_argument("action", nargs="?", default="status", choices=["status", "check", "apply", "update", "save", "gnome-out", "gnome-in"], help="Action to run (default: status)")
+    p_dotfiles = subparsers.add_parser("dotfiles", help="Manage dotfiles using ~/.dotfiles/dotfiles script and GNU Stow")
+    p_dotfiles.add_argument("action", nargs="?", default="status", choices=["status", "check", "apply", "update", "save", "gnome-out", "gnome-in", "stow", "unstow", "restow"], help="Action to run (default: status)")
+    p_dotfiles.add_argument("package", nargs="?", help="Package name for selective stow, unstow, or restow")
     p_dotfiles.add_argument("--message", "-m", help="Commit message when saving")
 
     args = parser.parse_args()
@@ -552,12 +553,35 @@ Examples:
             else:
                 script_icon = "✓" if st["has_script"] else "✗"
                 print(f"  Script:    {script_icon} {st['script_path']}")
-                print(f"  Packages:  {', '.join(st['packages'])}")
                 if st["git"]["is_git"]:
                     git_state = "clean" if st["git"]["clean"] else f"dirty ({st['git']['modified_files']} modified)"
                     print(f"  Branch:    {st['git']['branch']} [{git_state}]")
                     print(f"  Latest:    {st['git']['last_commit']}")
+                print("-" * 80)
+                print(f"  {'PACKAGE':<20} {'STATUS':<15} {'ACTION'}")
+                print("-" * 80)
+                for p in st["packages"]:
+                    name = p["name"] if isinstance(p, dict) else p
+                    stowed = p.get("stowed", False) if isinstance(p, dict) else False
+                    status_str = "\033[1;32mstowed\033[0m" if stowed else "\033[1;30mnot stowed\033[0m"
+                    hint = f"dotfiles unstow {name}" if stowed else f"dotfiles stow {name}"
+                    print(f"  {name:<20} {status_str:<24} ({hint})")
             print("=" * 80 + "\n")
+            return
+        elif args.action in ("stow", "unstow", "restow"):
+            if not args.package:
+                print(f"✗ Package name required for selective {args.action}.")
+                print(f"  Usage: python3 app.py dotfiles {args.action} <package_name>")
+                return
+            print(f"\n--> Running: stow {args.action} on '{args.package}'...")
+            res = dm.run_command(args.action, package=args.package)
+            if res.get("output"):
+                print(res["output"])
+            if not res.get("success"):
+                print(f"✗ {args.action.capitalize()} failed: {res.get('error')}")
+            else:
+                print(f"✓ Package '{args.package}' {args.action}ed successfully.")
+            print()
             return
         else:
             print(f"\n--> Running: dotfiles {args.action}...")

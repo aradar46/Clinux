@@ -360,22 +360,30 @@
         <div class="cleaner-category-card">
           <div class="cleaner-cat-header">
             <div class="cleaner-cat-title">
-              <span class="cleaner-cat-name">Repository Details</span>
+              <span class="cleaner-cat-name">Selective Stow & Packages</span>
             </div>
+            <div id="dotfilesGitState" class="ai-agent-tag">-</div>
           </div>
           <div style="padding:1.25rem; display:flex; flex-direction:column; gap:0.75rem; font-size:0.8rem;">
-            <div>
-              <span style="color:var(--text-muted); font-weight:600;">Branch:</span>
-              <span id="dotfilesBranch" style="font-family:var(--font-mono); margin-left:0.5rem;">-</span>
-              <span id="dotfilesGitState" class="ai-agent-tag" style="margin-left:0.4rem;">-</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+              <div>
+                <span style="color:var(--text-muted); font-weight:600;">Branch:</span>
+                <span id="dotfilesBranch" style="font-family:var(--font-mono); margin-left:0.4rem;">-</span>
+              </div>
+              <div>
+                <span style="color:var(--text-muted); font-weight:600;">Commit:</span>
+                <span id="dotfilesLastCommit" style="font-family:var(--font-mono); color:var(--text-secondary); margin-left:0.4rem; font-size:0.75rem;">-</span>
+              </div>
             </div>
-            <div>
-              <span style="color:var(--text-muted); font-weight:600;">Latest Commit:</span>
-              <div id="dotfilesLastCommit" style="font-family:var(--font-mono); color:var(--text-secondary); margin-top:0.2rem; font-size:0.75rem;">-</div>
-            </div>
-            <div>
-              <span style="color:var(--text-muted); font-weight:600;">Managed Packages:</span>
-              <div id="dotfilesPackagesList" style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.35rem;">
+            <div style="border-top:1px solid var(--border-subtle); padding-top:0.75rem;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+                <span style="color:var(--text-muted); font-weight:600;">Packages:</span>
+                <div style="display:flex; gap:0.4rem;">
+                  <button class="btn btn-secondary btn-xs" onclick="app.stowAllPackages()">Stow All</button>
+                  <button class="btn btn-secondary btn-xs" onclick="app.unstowAllPackages()">Unstow All</button>
+                </div>
+              </div>
+              <div id="dotfilesPackagesList" class="cleaner-target-list" style="display:flex; flex-direction:column; gap:0.5rem;">
                 <!-- Populated by app.js -->
               </div>
             </div>

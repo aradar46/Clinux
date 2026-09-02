@@ -2390,24 +2390,60 @@ class TarGzApp {
     }
 
     if (pkgsList && d.packages) {
-      pkgsList.innerHTML = d.packages.map(p => `
-        <span class="ai-agent-tag active">${this.escapeHtml(p)}</span>
-      `).join('');
+      if (d.packages.length === 0) {
+        pkgsList.innerHTML = `<div style="color:var(--text-muted); font-size:0.75rem;">No package directories detected in repository.</div>`;
+      } else {
+        pkgsList.innerHTML = d.packages.map(p => {
+          const name = typeof p === 'object' ? p.name : p;
+          const stowed = typeof p === 'object' ? p.stowed : false;
+          const statusBadge = stowed
+            ? `<span class="ai-skill-badge" style="color:var(--accent-emerald); border-color:currentColor; font-size:0.7rem;">stowed</span>`
+            : `<span class="ai-skill-badge" style="color:var(--text-muted); border-color:currentColor; font-size:0.7rem;">not stowed</span>`;
+
+          const actionBtn = stowed
+            ? `
+              <button class="btn btn-secondary btn-xs" onclick="app.runSelectiveStow('unstow', '${this.escapeHtml(name)}')" title="Unlink this package">
+                Unstow
+              </button>
+              <button class="btn btn-secondary btn-xs" onclick="app.runSelectiveStow('restow', '${this.escapeHtml(name)}')" title="Re-link package">
+                Restow
+              </button>
+            `
+            : `
+              <button class="btn btn-primary btn-xs" onclick="app.runSelectiveStow('stow', '${this.escapeHtml(name)}')" title="Link this package">
+                Stow
+              </button>
+            `;
+
+          return `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.6rem; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:var(--radius-sm);">
+              <div style="display:flex; align-items:center; gap:0.5rem;">
+                <span style="font-family:var(--font-mono); font-weight:600;">${this.escapeHtml(name)}</span>
+                ${statusBadge}
+              </div>
+              <div style="display:flex; gap:0.35rem;">
+                ${actionBtn}
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
     }
   }
 
-  async runDotfilesCommand(command, message = null) {
+  async runDotfilesCommand(command, message = null, packageName = null) {
     const consoleElem = document.getElementById('dotfilesOutputConsole');
     const badgeElem = document.getElementById('dotfilesOutputBadge');
 
-    if (badgeElem) badgeElem.textContent = `Running ${command}...`;
-    if (consoleElem) consoleElem.textContent = `--> dotfiles ${command}...\n`;
+    const cmdLabel = packageName ? `${command} ${packageName}` : command;
+    if (badgeElem) badgeElem.textContent = `Running ${cmdLabel}...`;
+    if (consoleElem) consoleElem.textContent = `--> dotfiles ${cmdLabel}...\n`;
 
     try {
       const res = await fetch('/api/dotfiles/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command, message })
+        body: JSON.stringify({ command, message, package: packageName })
       });
       const data = await res.json();
       if (consoleElem) {
@@ -2418,9 +2454,9 @@ class TarGzApp {
       }
 
       if (data.success) {
-        this.toast(`dotfiles ${command} completed`, 'success');
+        this.toast(`dotfiles ${cmdLabel} completed`, 'success');
       } else {
-        this.toast(`dotfiles ${command} failed: ` + (data.error || 'Check console'), 'error');
+        this.toast(`dotfiles ${cmdLabel} failed: ` + (data.error || 'Check console'), 'error');
       }
 
       await this.fetchDotfilesStatus(false);
@@ -2428,6 +2464,27 @@ class TarGzApp {
       if (consoleElem) consoleElem.textContent = `Error executing request: ${e.message}`;
       if (badgeElem) badgeElem.textContent = 'Error';
       this.toast(`Request failed: ${e.message}`, 'error');
+    }
+  }
+
+  async runSelectiveStow(action, packageName) {
+    await this.runDotfilesCommand(action, null, packageName);
+  }
+
+  async stowAllPackages() {
+    await this.runDotfilesCommand('apply');
+  }
+
+  async unstowAllPackages() {
+    if (!confirm('Unlink (unstow) all packages from your home directory?')) return;
+    const d = this.dotfilesData;
+    if (!d || !d.packages) return;
+    for (const p of d.packages) {
+      const name = typeof p === 'object' ? p.name : p;
+      const stowed = typeof p === 'object' ? p.stowed : false;
+      if (stowed) {
+        await this.runDotfilesCommand('unstow', null, name);
+      }
     }
   }
 

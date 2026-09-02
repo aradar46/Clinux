@@ -40,8 +40,30 @@ class TestDotfilesManager(unittest.TestCase):
         status = self.mgr.get_status()
         self.assertTrue(status["exists"])
         self.assertTrue(status["has_script"])
-        self.assertIn("home", status["packages"])
-        self.assertIn("config", status["packages"])
+        pkg_names = [p["name"] for p in status["packages"]]
+        self.assertIn("home", pkg_names)
+        self.assertIn("config", pkg_names)
+
+    def test_is_package_stowed(self):
+        target_dir = Path(self.temp_dir.name) / "home_target"
+        target_dir.mkdir()
+        self.mgr.target_dir = target_dir
+
+        # Create a file inside home package
+        test_file = self.repo_dir / "home" / "test_file.txt"
+        test_file.write_text("hello")
+
+        # Before symlinking, should not be stowed
+        self.assertFalse(self.mgr.is_package_stowed("home"))
+
+        # Symlink into target
+        (target_dir / "test_file.txt").symlink_to(test_file)
+        self.assertTrue(self.mgr.is_package_stowed("home"))
+
+    def test_selective_stow_requires_package(self):
+        res = self.mgr.run_command("stow")
+        self.assertFalse(res["success"])
+        self.assertIn("required", res["error"].lower())
 
     def test_run_allowed_commands(self):
         res = self.mgr.run_command("check")
@@ -99,6 +121,18 @@ class TestDotfilesHttpApi(unittest.TestCase):
             self.assertIn("exists", data)
             self.assertIn("packages", data)
             self.assertIn("git", data)
+
+
+    def test_dotfiles_run_api(self):
+        import urllib.request
+        import json
+        url = f"http://127.0.0.1:{self.port}/api/dotfiles/run"
+        payload = json.dumps({"command": "status"}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertIn("command", data)
 
 
 if __name__ == "__main__":

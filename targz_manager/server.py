@@ -525,10 +525,11 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             elif path == '/api/dotfiles/run':
                 cmd_name = body.get('command')
                 msg = body.get('message')
+                pkg = body.get('package')
                 if not cmd_name:
                     self._send_error_json("command is required", status=400)
                     return
-                res = self.dotfiles_manager.run_command(cmd_name, message=msg)
+                res = self.dotfiles_manager.run_command(cmd_name, message=msg, package=pkg)
                 self._send_json(res)
                 return
 
