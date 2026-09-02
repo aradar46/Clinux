@@ -1,16 +1,8 @@
-<img src="targz_manager/static/icon.png" width="200" align="left" alt="Clinux icon">
-
-
-
-
-
-
-
-
-
-
-
 # Clinux
+
+![Alt text](targz_manager/static/icon.png)
+
+
 
 Self-hosted web UI and CLI for Linux system cleaning and portable app management. Zero dependencies.
 
