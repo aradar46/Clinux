@@ -71,6 +71,10 @@
         <div class="nav-item" id="navServices" onclick="app.setTab('services')">
           <span>  Services</span>
         </div>
+        <div class="nav-item" id="navSecurity" onclick="app.setTab('security')">
+          <span>  Security Report</span>
+          <span class="nav-badge nav-badge-warn" id="securityHighBadge" style="display:none;">0 HIGH</span>
+        </div>
 
         <div class="nav-category">DEVELOPMENT</div>
         <div class="nav-item" id="navApps" onclick="app.setTab('all')">
@@ -123,8 +127,36 @@
           </div>
         </div>
 
+        <!-- VIEW 0: SECURITY AUDIT REPORT -->
+        <div id="securityView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
+          <div class="retro-panel-title">CLINUX SECURITY AUDIT REPORT</div>
+
+          <div class="terminal-box" style="padding:12px;">
+            <div style="font-size:14px; font-weight:bold; color:var(--c-terminal-green-bright); margin-bottom:8px;">
+              USER-SPACE READ-ONLY AUDIT — <span id="secUserHost">user@clinux</span>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px; border-top:1px dashed var(--c-terminal-green); padding-top:8px;">
+              <div>[!] <strong style="color:#e05252;" id="secHighCount">0 HIGH</strong></div>
+              <div>[!] <strong style="color:var(--c-warning-yellow);" id="secMediumCount">0 MEDIUM</strong></div>
+              <div>[~] <strong style="color:var(--c-warm-beige);" id="secLowCount">0 LOW</strong></div>
+              <div>[i] <strong style="color:var(--text-muted);" id="secInfoCount">0 INFO</strong></div>
+              <div>[✓] <strong style="color:var(--c-terminal-green-bright);" id="secPassedCount">0 PASSED</strong></div>
+            </div>
+          </div>
+
+          <div class="action-toolbar">
+            <button class="retro-btn retro-btn-green" onclick="app.runSecurityScan()">[ S ] SCAN NOW</button>
+            <button class="retro-btn" onclick="app.exportSecurityReport('text')">[ E ] SAVE TEXT REPORT</button>
+            <button class="retro-btn" onclick="app.exportSecurityReport('json')">[ J ] SAVE JSON REPORT</button>
+          </div>
+
+          <div id="securityFindingsList" style="display:flex; flex-direction:column; gap:10px;">
+            <!-- Populated dynamically by app.js -->
+          </div>
+        </div>
+
         <!-- VIEW 1: SYSTEM DASHBOARD -->
-        <div id="dashboardView" class="retro-panel" style="display:flex; flex-direction:column; gap:12px; margin-top:0;">
+<div id="dashboardView" class="retro-panel" style="display:flex; flex-direction:column; gap:12px; margin-top:0;">
           <div class="retro-panel-title">SYSTEM STATUS & DASHBOARD</div>
 
           <!-- ASCII Health Bar Panel -->
