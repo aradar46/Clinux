@@ -1,8 +1,11 @@
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Any
+
+from clinux.runner import runner
 
 class SystemDoctor:
     def __init__(self, cleaner=None):
@@ -162,18 +165,23 @@ class SystemDoctor:
 
     def fix(self, problem: Dict[str, Any]) -> bool:
         cmd = problem.get("fix_command")
+        if problem.get("type") == "broken_desktop_entry":
+            path = problem.get("path")
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                    return True
+                except Exception:
+                    return False
+
         if not cmd:
             return False
 
         try:
-            if problem["type"] == "broken_desktop_entry":
-                path = problem.get("path")
-                if path and os.path.exists(path):
-                    os.remove(path)
-                    return True
-            else:
-                subprocess.run(cmd, shell=True, check=True)
-                return True
+            cmd_args = shlex.split(cmd)
+            if not cmd_args:
+                return False
+            res = runner.run(cmd_args, check=True)
+            return res.success
         except Exception:
             return False
-        return False
