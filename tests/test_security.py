@@ -51,10 +51,16 @@ class TestSecurityAuditor(unittest.TestCase):
         self.assertIn("CLINUX SECURITY AUDIT", text_rep)
         self.assertIn("HIGH", text_rep)
 
-        export_p = self.home_path / "report.txt"
-        saved = self.auditor.export_report(audit_res, filepath=str(export_p), format_type="text")
+        saved = self.auditor.export_report(audit_res, format_type="text")
+        export_p = Path(saved)
         self.assertTrue(Path(saved).exists())
+        self.assertEqual(export_p.parent, self.home_path)
         self.assertIn("CLINUX SECURITY AUDIT", export_p.read_text())
+
+    def test_export_rejects_path_outside_home(self):
+        audit_res = self.auditor.audit_all()
+        with self.assertRaises(ValueError):
+            self.auditor.export_report(audit_res, filepath="/tmp/clinux-report.txt", format_type="text")
 
 
 if __name__ == "__main__":
