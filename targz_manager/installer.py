@@ -4,7 +4,6 @@ import stat
 import shutil
 import tarfile
 import zipfile
-import tempfile
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
