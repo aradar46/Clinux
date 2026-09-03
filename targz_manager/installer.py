@@ -128,18 +128,11 @@ class Installer:
         display_name = name.replace('-', ' ').replace('_', ' ').title()
         return name, version, display_name
 
-    def inspect_archive(self, archive_path: str) -> Dict[str, Any]:
-        """Inspect archive without extracting, identifying top-level folder, executables, icons, and size"""
-        path = Path(archive_path)
-        if not path.is_file():
-            raise ArchiveError(f"Archive file not found: {archive_path}")
-
-        name, version, display_name = self.guess_name_and_version(path.name)
+    @staticmethod
+    def _read_archive_members(path: Path) -> List[Dict[str, Any]]:
+        """Read zip or tar archive members metadata"""
         members = []
-        is_zip = False
-
         if zipfile.is_zipfile(str(path)):
-            is_zip = True
             try:
                 with zipfile.ZipFile(str(path), 'r') as zf:
                     for info in zf.infolist():
@@ -166,9 +159,11 @@ class Installer:
 
         if not members:
             raise ArchiveError("Archive is empty")
+        return members
 
-        total_uncompressed_size = sum(m["size"] for m in members)
-
+    @staticmethod
+    def _detect_wrapper_folder(members: List[Dict[str, Any]]) -> Tuple[Optional[str], bool]:
+        """Detect if archive members reside under a single top-level root directory"""
         root_prefixes = set()
         for m in members:
             parts = m["name"].split('/')
@@ -183,15 +178,19 @@ class Installer:
                 single_root = candidate
                 has_wrapper = True
 
-        if single_root:
-            r_name, r_ver, r_disp = self.guess_name_and_version(single_root)
-            if r_name and len(r_name) > 1:
-                name = r_name
-                version = r_ver or version
-                display_name = r_disp
+        return single_root, has_wrapper
 
+    def _find_executables_and_icons(
+        self,
+        members: List[Dict[str, Any]],
+        app_name: str,
+        single_root: Optional[str],
+        has_wrapper: bool
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Scan archive members and score executable binaries and icon files"""
         executables = []
         icons = []
+        ignored_exts = {'.txt', '.md', '.html', '.css', '.js', '.json', '.xml', '.png', '.jpg', '.svg', '.so', '.a', '.h', '.c', '.cpp', '.pyc', '.mo', '.po', '.desktop', '.man', '.1', '.gz', '.zip'}
 
         for m in members:
             if m["is_dir"]:
@@ -209,15 +208,14 @@ class Installer:
             is_exec_mode = bool(mode & 0o111) if mode else False
             score = 0
 
-            ignored_exts = {'.txt', '.md', '.html', '.css', '.js', '.json', '.xml', '.png', '.jpg', '.svg', '.so', '.a', '.h', '.c', '.cpp', '.pyc', '.mo', '.po', '.desktop', '.man', '.1', '.gz', '.zip'}
             ext = Path(filename).suffix.lower()
 
             if ext not in ignored_exts:
                 if is_exec_mode:
                     score += 50
-                if lower_name == name.lower():
+                if lower_name == app_name.lower():
                     score += 60
-                elif lower_name.startswith(name.lower()):
+                elif lower_name.startswith(app_name.lower()):
                     score += 40
                 if rel_name.startswith("bin/"):
                     score += 30
@@ -239,7 +237,7 @@ class Installer:
                 icon_score = 10
                 if any(k in lower_rel for k in ['icon', 'logo', 'pixmap', 'hicolor', 'scalable']):
                     icon_score += 40
-                if name.lower() in lower_name:
+                if app_name.lower() in lower_name:
                     icon_score += 30
                 if ext == '.svg':
                     icon_score += 10
@@ -252,6 +250,28 @@ class Installer:
 
         executables.sort(key=lambda x: x["score"], reverse=True)
         icons.sort(key=lambda x: x["score"], reverse=True)
+        return executables, icons
+
+    def inspect_archive(self, archive_path: str) -> Dict[str, Any]:
+        """Inspect archive without extracting, identifying top-level folder, executables, icons, and size"""
+        path = Path(archive_path)
+        if not path.is_file():
+            raise ArchiveError(f"Archive file not found: {archive_path}")
+
+        name, version, display_name = self.guess_name_and_version(path.name)
+        members = self._read_archive_members(path)
+        total_uncompressed_size = sum(m["size"] for m in members)
+
+        single_root, has_wrapper = self._detect_wrapper_folder(members)
+
+        if single_root:
+            r_name, r_ver, r_disp = self.guess_name_and_version(single_root)
+            if r_name and len(r_name) > 1:
+                name = r_name
+                version = r_ver or version
+                display_name = r_disp
+
+        executables, icons = self._find_executables_and_icons(members, name, single_root, has_wrapper)
 
         return {
             "archive_path": str(path.resolve()),
