@@ -488,7 +488,12 @@ class SystemCleaner:
             }
 
         path = Path(target["path"])
-        if not path.exists():
+        needs_sudo = target.get("needs_sudo", False) or (path.exists() and Installer.check_needs_sudo(path))
+        sudo_cmd = target.get("sudo_command")
+        if not sudo_cmd and needs_sudo:
+            sudo_cmd = f"sudo rm -rf '{path}'/*"
+
+        if not path.exists() and not (needs_sudo and sudo_password):
             return {
                 "id": target_id,
                 "name": target["name"],
@@ -501,10 +506,6 @@ class SystemCleaner:
 
         only_exts = target.get("only_extensions")
         initial_size, initial_files = self.get_directory_stats(path, only_extensions=only_exts)
-        needs_sudo = target.get("needs_sudo", False) or Installer.check_needs_sudo(path)
-        sudo_cmd = target.get("sudo_command")
-        if not sudo_cmd and needs_sudo:
-            sudo_cmd = f"sudo rm -rf '{path}'/*"
 
         try:
             if needs_sudo:
@@ -539,7 +540,7 @@ class SystemCleaner:
                             "freed_files": 0,
                             "needs_sudo": True,
                             "sudo_command": sudo_cmd,
-                            "error": "Incorrect sudo password" if ("incorrect" in err.lower() or "password" in err.lower()) else (err or "Clean failed")
+                            "error": "Incorrect sudo password" if ("incorrect" in err.lower() or "password" in err.lower() or "required" in err.lower()) else (err or "Clean failed")
                         }
                 elif interactive:
                     print(f"\n[sudo] Administrator permissions required for {target['name']}:")
