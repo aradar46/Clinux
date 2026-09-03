@@ -4,6 +4,7 @@ import datetime
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Dict, Optional, Any
+from .utils import compute_directory_size
 
 DEFAULT_DB_DIR = Path.home() / ".local" / "share" / "clinux"
 DEFAULT_DB_PATH = DEFAULT_DB_DIR / "apps.db"
@@ -291,7 +292,8 @@ class Database:
         current_size = data.get("size_bytes", 0)
         if install_exists:
             try:
-                calc_size = sum(f.stat().st_size for f in install_path.rglob('*') if f.is_file() and not f.is_symlink())
+                # Fast directory size calculation using os.scandir (avoiding slow Path.rglob)
+                calc_size = compute_directory_size(install_path)
                 if calc_size > 0:
                     current_size = calc_size
             except Exception:

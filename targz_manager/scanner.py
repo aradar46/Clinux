@@ -6,6 +6,7 @@ from typing import List, Dict, Optional, Any, Set
 
 from .db import Database
 from .installer import Installer, DEFAULT_OPT_DIR, DEFAULT_DESKTOP_DIR, DEFAULT_BIN_DIR
+from .utils import compute_directory_size
 
 
 class SystemScanner:
@@ -292,11 +293,8 @@ class SystemScanner:
         elif any(k in lower_slug for k in ["game", "steam", "emu", "retro", "minecraft"]):
             category = "Game"
 
-        calc_size = 0
-        try:
-            calc_size = sum(f.stat().st_size for f in target.rglob('*') if f.is_file() and not f.is_symlink())
-        except Exception:
-            pass
+        # Fast directory size calculation using os.scandir (avoiding slow Path.rglob)
+        calc_size = compute_directory_size(target)
 
         needs_sudo = not os.access(str(target), os.W_OK)
 
@@ -342,7 +340,8 @@ class SystemScanner:
             try:
                 p_dir = Path(inst_p)
                 if p_dir.exists() and p_dir.is_dir():
-                    calc_size = sum(f.stat().st_size for f in p_dir.rglob('*') if f.is_file() and not f.is_symlink())
+                    # Fast directory size calculation using os.scandir (avoiding slow Path.rglob)
+                    calc_size = compute_directory_size(p_dir)
                 elif Path(exec_p).exists():
                     calc_size = Path(exec_p).stat().st_size
             except Exception:
