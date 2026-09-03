@@ -1,4 +1,5 @@
 import os
+import json
 import sqlite3
 import datetime
 from contextlib import contextmanager
@@ -8,6 +9,70 @@ from typing import List, Dict, Optional, Any
 DEFAULT_DB_DIR = Path.home() / ".local" / "share" / "clinux"
 DEFAULT_DB_PATH = DEFAULT_DB_DIR / "apps.db"
 OLD_DB_PATH = Path.home() / ".local" / "share" / "targz-manager" / "apps.db"
+
+DEFAULT_OPTIONS = {
+    "tabs": [
+        {"id": "dashboard", "name": "Dashboard", "visible": True, "category": "SYSTEM"},
+        {"id": "cleaner", "name": "Cleaner", "visible": True, "category": "SYSTEM"},
+        {"id": "apps", "name": "Portable Apps", "visible": True, "category": "DEVELOPMENT"},
+        {"id": "ai", "name": "AI & Skills", "visible": True, "category": "AI & SKILLS"},
+        {"id": "dotfiles", "name": "Dotfiles", "visible": True, "category": "PERSONAL"},
+        {"id": "projects", "name": "Projects", "visible": True, "category": "DEVELOPMENT"},
+        {"id": "security", "name": "Security", "visible": True, "category": "SYSTEM"},
+        {"id": "services", "name": "Services", "visible": False, "category": "SYSTEM"},
+        {"id": "network", "name": "Network", "visible": False, "category": "SYSTEM"},
+        {"id": "doctor", "name": "System Doctor", "visible": False, "category": "SYSTEM"}
+    ],
+    "appearance": {
+        "theme": "classic-green",
+        "font": "bitmap",
+        "crt_effects": True,
+        "animations": False
+    },
+    "behavior": {
+        "confirm_destructive": True,
+        "show_commands": True,
+        "create_backups": True,
+        "start_dashboard": True
+    },
+    "modules": {
+        "cleaner": {
+            "package_managers": {
+                "pacman": True,
+                "yay": True,
+                "flatpak": True,
+                "apt": True,
+                "dnf": False
+            },
+            "developer_caches": {
+                "pip": True,
+                "uv": True,
+                "npm": True,
+                "cargo": True,
+                "conda": True,
+                "r": False
+            },
+            "require_confirmation": True,
+            "show_reclaimable_space": True
+        },
+        "security": {
+            "scan": {
+                "ssh": True,
+                "secrets": True,
+                "path": True,
+                "permissions": True,
+                "git": True,
+                "network": True,
+                "user_services": True
+            },
+            "privacy": {
+                "local_scans_only": True,
+                "never_upload_reports": True
+            },
+            "severity_threshold": "LOW"
+        }
+    }
+}
 
 
 class Database:
@@ -74,7 +139,62 @@ class Database:
                 ignored_at TEXT NOT NULL
             );
             """)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS options (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """)
             conn.commit()
+
+    def get_options(self) -> Dict[str, Any]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM options WHERE key = 'app_options'")
+            row = cursor.fetchone()
+            if row and row["value"]:
+                try:
+                    user_opts = json.loads(row["value"])
+                    return self._deep_merge_options(DEFAULT_OPTIONS, user_opts)
+                except Exception:
+                    pass
+            return json.loads(json.dumps(DEFAULT_OPTIONS))
+
+    def save_options(self, options: Dict[str, Any]) -> Dict[str, Any]:
+        merged = self._deep_merge_options(DEFAULT_OPTIONS, options)
+        now = datetime.datetime.now().isoformat()
+        json_val = json.dumps(merged)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR REPLACE INTO options (key, value, updated_at) VALUES ('app_options', ?, ?)",
+                (json_val, now)
+            )
+            conn.commit()
+        return merged
+
+    def reset_options(self) -> Dict[str, Any]:
+        return self.save_options(DEFAULT_OPTIONS)
+
+    @classmethod
+    def _deep_merge_options(cls, default: Any, user: Any) -> Any:
+        if isinstance(default, dict) and isinstance(user, dict):
+            res = {}
+            for k, v in default.items():
+                if k in user:
+                    res[k] = cls._deep_merge_options(v, user[k])
+                else:
+                    res[k] = json.loads(json.dumps(v))
+            for k, v in user.items():
+                if k not in res:
+                    res[k] = v
+            return res
+        elif isinstance(default, list) and isinstance(user, list):
+            # For list of tabs, retain user's ordered list if present
+            return user
+        else:
+            return user
 
     def add_app(self, app_data: Dict[str, Any]) -> int:
         now = datetime.datetime.now().isoformat()

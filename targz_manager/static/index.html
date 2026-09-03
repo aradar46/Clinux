@@ -38,6 +38,8 @@
       <div class="menu-item" onclick="app.setTab('dashboard')"><u>S</u>ystem</div>
       <div class="menu-item" onclick="app.setTab('ai')">S<u>k</u>ills</div>
       <div class="menu-item" onclick="app.setTab('dotfiles')"><u>D</u>otfiles</div>
+      <div class="menu-item" onclick="app.setTab('options')"><u>O</u>ptions</div>
+      <div class="menu-item" onclick="app.openAboutModal()"><u>A</u>bout</div>
       <div class="menu-item" onclick="app.openHelpModal()"><u>H</u>elp</div>
       <div class="menu-spacer"></div>
       <!-- Search Input in Header -->
@@ -57,41 +59,17 @@
           <div class="sidebar-logo-sub">SYS UTILITY 1998</div>
         </div>
 
-        <div class="nav-category">SYSTEM</div>
-        <div class="nav-item active" id="navDashboard" onclick="app.setTab('dashboard')">
-          <span>> Dashboard</span>
-        </div>
-        <div class="nav-item" id="navCleaner" onclick="app.setTab('cleaner')">
-          <span>  Cleaner</span>
-          <span class="nav-badge nav-badge-warn" id="cleanerTotalBadge">0 B</span>
-        </div>
-        <div class="nav-item" id="navStorage" onclick="app.setTab('storage')">
-          <span>  Storage</span>
-        </div>
-        <div class="nav-item" id="navServices" onclick="app.setTab('services')">
-          <span>  Services</span>
-        </div>
+        <div id="sidebarModulesTree"></div>
 
-        <div class="nav-category">DEVELOPMENT</div>
-        <div class="nav-item" id="navApps" onclick="app.setTab('all')">
-          <span>  Portable Apps</span>
-          <span class="nav-badge" id="appsNavBadge">0</span>
+        <div class="sidebar-divider"></div>
+        <div class="nav-item" id="navOptions" onclick="app.setTab('options')">
+          <span>  Options</span>
         </div>
-        <div class="nav-item" id="navDiscovered" onclick="app.setTab('discovered')" style="display:none;">
-          <span>  Discovered</span>
-          <span class="nav-badge nav-badge-warn" id="pillDiscoveredCount">0</span>
+        <div class="nav-item" id="navAbout" onclick="app.openAboutModal()">
+          <span>  About</span>
         </div>
-
-        <div class="nav-category">AI & SKILLS</div>
-        <div class="nav-item" id="navAI" onclick="app.setTab('ai')">
-          <span>  Skills & Models</span>
-          <span class="nav-badge" id="aiSkillsBadge">0</span>
-        </div>
-
-        <div class="nav-category">PERSONAL</div>
-        <div class="nav-item" id="navDotfiles" onclick="app.setTab('dotfiles')">
-          <span>  Dotfiles (Stow)</span>
-          <span class="nav-badge nav-badge-warn" id="dotfilesBadge" style="display:none;">dirty</span>
+        <div class="nav-item" id="navQuit" onclick="app.quitApp()">
+          <span>  Quit</span>
         </div>
 
         <div class="sidebar-divider"></div>
@@ -388,6 +366,201 @@
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- VIEW 7: OPTIONS CONTROL PANEL -->
+        <div id="optionsView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
+          <div class="retro-panel-title">CLINUX OPTIONS CONTROL PANEL</div>
+
+          <!-- TAB CONFIGURATION -->
+          <div class="retro-panel" style="margin-top:0;">
+            <div class="retro-panel-title">TAB CONFIGURATION</div>
+            <div style="font-weight:bold; margin-bottom:6px; font-size:11px; color:var(--c-terminal-green-bright);">VISIBLE TABS</div>
+
+            <div id="optionsTabsList" class="terminal-box" style="display:flex; flex-direction:column; gap:4px; max-height:220px; overflow-y:auto; padding:6px;">
+              <!-- Populated dynamically by app.js -->
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; font-size:11px; color:var(--text-muted);">
+              <div>
+                <span class="key-hint">↑</span> <span class="key-hint">↓</span> Move &nbsp;&nbsp;
+                <span class="key-hint">SPACE</span> Toggle &nbsp;&nbsp;
+                <span class="key-hint">ENTER</span> Edit
+              </div>
+              <div>
+                Visible tabs: <strong style="color:var(--c-warm-beige);"><span id="optionsVisibleCount">7</span> / <span id="optionsTotalCount">10</span></strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- APPEARANCE -->
+          <div class="retro-panel" style="margin-top:0;">
+            <div class="retro-panel-title">APPEARANCE</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <div>
+                <label style="font-size:11px; font-weight:bold;">Theme</label>
+                <select id="optThemeSelect" class="retro-input" style="width:100%; margin-top:2px;">
+                  <option value="classic-green">Classic Green</option>
+                  <option value="amber-crt">Amber CRT</option>
+                  <option value="midnight">Midnight</option>
+                  <option value="high-contrast">High Contrast</option>
+                  <option value="monochrome">Monochrome</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px; font-weight:bold;">Font</label>
+                <select id="optFontSelect" class="retro-input" style="width:100%; margin-top:2px;">
+                  <option value="bitmap">Bitmap</option>
+                  <option value="jetbrains">JetBrains Mono</option>
+                  <option value="monospace">System Monospace</option>
+                </select>
+              </div>
+              <div>
+                <label><input type="checkbox" id="optCrtEffects"> CRT Effects [ ON / OFF ]</label>
+              </div>
+              <div>
+                <label><input type="checkbox" id="optAnimations"> Animations [ ON / OFF ]</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- BEHAVIOR -->
+          <div class="retro-panel" style="margin-top:0;">
+            <div class="retro-panel-title">BEHAVIOR</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+              <label><input type="checkbox" id="optConfirmDestructive" checked> Confirm destructive actions</label>
+              <label><input type="checkbox" id="optShowCommands" checked> Show commands before execution</label>
+              <label><input type="checkbox" id="optCreateBackups" checked> Create backups before changes</label>
+              <label><input type="checkbox" id="optStartDashboard" checked> Start on Dashboard</label>
+            </div>
+          </div>
+
+          <!-- MODULE SPECIFIC SETTINGS -->
+          <div class="retro-panel" style="margin-top:0;">
+            <div class="retro-panel-title">MODULE SPECIFIC SETTINGS</div>
+
+            <!-- CLEANER -->
+            <div style="border-bottom:1px dashed var(--c-shadow); padding-bottom:10px; margin-bottom:10px;">
+              <div style="font-weight:bold; color:var(--c-terminal-green-bright); margin-bottom:6px;">CLEANER</div>
+
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div>
+                  <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">Package Managers</div>
+                  <div style="display:flex; flex-direction:column; gap:3px;">
+                    <label><input type="checkbox" id="optCleanerPacman" checked> Pacman</label>
+                    <label><input type="checkbox" id="optCleanerYay" checked> Yay</label>
+                    <label><input type="checkbox" id="optCleanerFlatpak" checked> Flatpak</label>
+                    <label><input type="checkbox" id="optCleanerApt" checked> APT</label>
+                    <label><input type="checkbox" id="optCleanerDnf"> DNF</label>
+                  </div>
+                </div>
+
+                <div>
+                  <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">Developer Caches</div>
+                  <div style="display:flex; flex-direction:column; gap:3px;">
+                    <label><input type="checkbox" id="optCleanerPip" checked> Pip</label>
+                    <label><input type="checkbox" id="optCleanerUv" checked> uv</label>
+                    <label><input type="checkbox" id="optCleanerNpm" checked> Npm</label>
+                    <label><input type="checkbox" id="optCleanerCargo" checked> Cargo</label>
+                    <label><input type="checkbox" id="optCleanerConda" checked> Conda</label>
+                    <label><input type="checkbox" id="optCleanerR"> R</label>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-top:8px; display:flex; gap:16px;">
+                <label><input type="checkbox" id="optCleanerReqConfirm" checked> Require confirmation</label>
+                <label><input type="checkbox" id="optCleanerShowSpace" checked> Show reclaimable space</label>
+              </div>
+            </div>
+
+            <!-- SECURITY -->
+            <div>
+              <div style="font-weight:bold; color:var(--c-terminal-green-bright); margin-bottom:6px;">SECURITY</div>
+
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+                <div>
+                  <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">Scan</div>
+                  <div style="display:flex; flex-direction:column; gap:3px;">
+                    <label><input type="checkbox" id="optSecSsh" checked> SSH</label>
+                    <label><input type="checkbox" id="optSecSecrets" checked> Secrets</label>
+                    <label><input type="checkbox" id="optSecPath" checked> PATH</label>
+                    <label><input type="checkbox" id="optSecPerms" checked> Permissions</label>
+                    <label><input type="checkbox" id="optSecGit" checked> Git</label>
+                    <label><input type="checkbox" id="optSecNet" checked> Network</label>
+                    <label><input type="checkbox" id="optSecServices" checked> User services</label>
+                  </div>
+                </div>
+
+                <div>
+                  <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">Privacy</div>
+                  <div style="display:flex; flex-direction:column; gap:3px;">
+                    <label><input type="checkbox" id="optSecLocalOnly" checked> Local scans only</label>
+                    <label><input type="checkbox" id="optSecNeverUpload" checked> Never upload reports</label>
+                  </div>
+                </div>
+
+                <div>
+                  <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">Report</div>
+                  <div>
+                    <label style="font-size:11px;">Severity threshold</label>
+                    <select id="optSecThreshold" class="retro-input" style="width:100%; margin-top:2px;">
+                      <option value="LOW">LOW</option>
+                      <option value="MEDIUM">MEDIUM</option>
+                      <option value="HIGH">HIGH</option>
+                      <option value="CRITICAL">CRITICAL</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ACTION BUTTONS -->
+          <div style="display:flex; gap:10px; margin-top:4px;">
+            <button class="retro-btn retro-btn-green" onclick="app.applyOptions()" style="min-width:110px;">[ APPLY ]</button>
+            <button class="retro-btn" onclick="app.resetOptions()" style="min-width:110px;">[ RESET ]</button>
+          </div>
+        </div>
+
+        <!-- VIEW 8: SECURITY PANEL -->
+        <div id="securityView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
+          <div class="retro-panel-title">SYSTEM SECURITY & PRIVACY AUDIT</div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>Local security scan results based on active security profile.</div>
+            <button class="retro-btn retro-btn-green" onclick="app.fetchSecurityScan()">Run Audit</button>
+          </div>
+          <div id="securityChecksList" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+
+        <!-- VIEW 9: PROJECTS PANEL -->
+        <div id="projectsView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
+          <div class="retro-panel-title">DEVELOPER PROJECTS & REPOSITORIES</div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>Discovered projects in ~/Projects, ~/src, ~/Code, and development folders.</div>
+            <button class="retro-btn" onclick="app.fetchProjectsList()">Re-Scan</button>
+          </div>
+          <div id="projectsListGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:10px;"></div>
+        </div>
+
+        <!-- VIEW 10: NETWORK PANEL -->
+        <div id="networkView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
+          <div class="retro-panel-title">NETWORK INTERFACES & LISTENING PORTS</div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>Local loopback interfaces and active listening server sockets.</div>
+            <button class="retro-btn" onclick="app.fetchNetworkStatus()">Refresh</button>
+          </div>
+          <div id="networkStatusContent" class="terminal-box"></div>
+        </div>
+
+        <!-- VIEW 11: SYSTEM DOCTOR -->
+        <div id="doctorView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
+          <div class="retro-panel-title">SYSTEM DOCTOR DIAGNOSTICS</div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>Diagnose failed systemd services, old kernels, broken .desktop shortcuts, and disk issues.</div>
+            <button class="retro-btn retro-btn-green" onclick="app.fetchDoctorDiagnosis()">Run Diagnostics</button>
+          </div>
+          <div id="doctorContent" class="terminal-box"></div>
         </div>
 
         <!-- EMPTY STATE -->
@@ -713,6 +886,32 @@
       <div class="modal-footer">
         <button class="retro-btn" onclick="app.copySudoCommand()">Copy Command</button>
         <button class="retro-btn retro-btn-green" onclick="app.completeSudoCommandClean()">Done / Re-Scan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- About Modal -->
+  <div id="aboutModal" class="modal-backdrop">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <span>ABOUT CLINUX 1.0</span>
+        <button class="win-btn" onclick="app.closeModal('aboutModal')">X</button>
+      </div>
+      <div class="modal-body">
+        <div class="terminal-box" style="text-align:center; padding:16px;">
+          <img src="/static/icon.png" alt="Clinux" style="width:64px; height:64px; image-rendering:pixelated; margin-bottom:8px;">
+          <div style="font-weight:bold; font-size:16px; color:var(--c-terminal-green-bright);">CLINUX 1.0</div>
+          <div style="color:var(--text-muted); font-size:11px; margin-bottom:12px;">Linux Cleaner, Portable App Manager, AI Skill Switcher & Dotfiles Toolbox</div>
+          <div style="border-top:1px dashed var(--c-terminal-green); padding-top:8px; font-size:11px; text-align:left;">
+            <div>• Python Standard Library only — Zero external dependencies</div>
+            <div>• Target Python: 3.8+ compatibility</div>
+            <div>• Authentic 1990s / early 2000s vintage Linux utility aesthetic</div>
+            <div>• License: GPL-3.0</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="retro-btn retro-btn-green" onclick="app.closeModal('aboutModal')">Close</button>
       </div>
     </div>
   </div>
