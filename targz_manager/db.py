@@ -20,7 +20,6 @@ DEFAULT_OPTIONS = {
         {"id": "dotfiles", "name": "Dotfiles", "visible": True, "category": "PERSONAL"},
         {"id": "projects", "name": "Projects", "visible": True, "category": "DEVELOPMENT"},
         {"id": "security", "name": "Security", "visible": True, "category": "SYSTEM"},
-        {"id": "services", "name": "Services", "visible": False, "category": "SYSTEM"},
         {"id": "network", "name": "Network", "visible": False, "category": "SYSTEM"},
         {"id": "doctor", "name": "System Doctor", "visible": False, "category": "SYSTEM"}
     ],

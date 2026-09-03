@@ -15,7 +15,7 @@ class ClinuxApp {
 
     // Selected Navigation Index for Keyboard Navigation
     this.selectedNavIdx = 0;
-    this.navItemKeys = ['dashboard', 'security', 'cleaner', 'storage', 'services', 'all', 'ai', 'dotfiles'];
+    this.navItemKeys = ['dashboard', 'security', 'cleaner', 'storage', 'all', 'ai', 'dotfiles'];
 
     // Security Audit State
     this.securityData = null;
@@ -340,7 +340,6 @@ class ClinuxApp {
       apps: document.getElementById('appsView'),
       ai: document.getElementById('aiView'),
       dotfiles: document.getElementById('dotfilesView'),
-      services: document.getElementById('servicesView'),
       options: document.getElementById('optionsView'),
       security: document.getElementById('securityView'),
       projects: document.getElementById('projectsView'),
@@ -376,8 +375,6 @@ class ClinuxApp {
     } else if (tab === 'doctor') {
       if (views.doctor) views.doctor.style.display = 'flex';
       this.fetchDoctorDiagnosis();
-    } else if (tab === 'services') {
-      if (views.services) views.services.style.display = 'block';
     } else if (tab === 'storage') {
       if (views.ai) views.ai.style.display = 'flex';
       this.setAISubTab('storage');
@@ -1834,9 +1831,6 @@ class ClinuxApp {
   populateOptionsForm() {
     if (!this.options) return;
 
-    // Tabs List
-    this.renderOptionsTabsList();
-
     // Appearance
     const appr = this.options.appearance || {};
     const themeSel = document.getElementById('optThemeSelect');
@@ -1911,61 +1905,6 @@ class ClinuxApp {
 
     const thresholdSel = document.getElementById('optSecThreshold');
     if (thresholdSel) thresholdSel.value = sec.severity_threshold || 'LOW';
-  }
-
-  renderOptionsTabsList() {
-    const list = document.getElementById('optionsTabsList');
-    if (!list || !this.options || !this.options.tabs) return;
-
-    const visibleCount = this.options.tabs.filter(t => t.visible).length;
-    const totalCount = this.options.tabs.length;
-
-    const visEl = document.getElementById('optionsVisibleCount');
-    if (visEl) visEl.textContent = visibleCount;
-
-    const totEl = document.getElementById('optionsTotalCount');
-    if (totEl) totEl.textContent = totalCount;
-
-    let html = '';
-    this.options.tabs.forEach((t, idx) => {
-      const checked = t.visible ? 'checked' : '';
-      html += `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:4px; border-bottom:1px dashed var(--c-shadow);">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span style="color:var(--text-muted);">☰</span>
-            <input type="checkbox" id="chk_tab_${t.id}" ${checked} onchange="app.toggleOptionTab('${t.id}', this.checked)">
-            <label for="chk_tab_${t.id}" style="font-weight:bold; cursor:pointer;">${t.name}</label>
-          </div>
-          <div style="display:flex; gap:4px;">
-            <button class="win-btn" onclick="app.moveOptionTab(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} title="Move Up">↑</button>
-            <button class="win-btn" onclick="app.moveOptionTab(${idx}, 1)" ${idx === totalCount - 1 ? 'disabled' : ''} title="Move Down">↓</button>
-          </div>
-        </div>
-      `;
-    });
-
-    list.innerHTML = html;
-  }
-
-  moveOptionTab(idx, direction) {
-    if (!this.options || !this.options.tabs) return;
-    const newIdx = idx + direction;
-    if (newIdx < 0 || newIdx >= this.options.tabs.length) return;
-
-    const temp = this.options.tabs[idx];
-    this.options.tabs[idx] = this.options.tabs[newIdx];
-    this.options.tabs[newIdx] = temp;
-
-    this.renderOptionsTabsList();
-  }
-
-  toggleOptionTab(tabId, visible) {
-    if (!this.options || !this.options.tabs) return;
-    const tab = this.options.tabs.find(t => t.id === tabId);
-    if (tab) {
-      tab.visible = visible;
-      this.renderOptionsTabsList();
-    }
   }
 
   async applyOptions() {
@@ -2175,14 +2114,13 @@ class ClinuxApp {
   }
 
   openCommandPalette() {
-    const cmd = prompt('CLINUX COMMAND PALETTE:\n1: Dashboard\n2: Cleaner\n3: Portable Apps\n4: AI & Skills\n5: Dotfiles\n6: Services\n7: Options\nq: Exit', '1');
+    const cmd = prompt('CLINUX COMMAND PALETTE:\n1: Dashboard\n2: Cleaner\n3: Portable Apps\n4: AI & Skills\n5: Dotfiles\n6: Options\nq: Exit', '1');
     if (cmd === '1') this.setTab('dashboard');
     else if (cmd === '2') this.setTab('cleaner');
     else if (cmd === '3') this.setTab('all');
     else if (cmd === '4') this.setTab('ai');
     else if (cmd === '5') this.setTab('dotfiles');
-    else if (cmd === '6') this.setTab('services');
-    else if (cmd === '7') this.setTab('options');
+    else if (cmd === '6') this.setTab('options');
   }
 
   closeWindow() {
