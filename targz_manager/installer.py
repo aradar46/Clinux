@@ -83,6 +83,19 @@ class Installer:
         raise ArchiveError(f"Root permission required to install/move to {dst_p}. Run in terminal: sudo mv \"{src_p}\" \"{dst_p}\"")
 
     @staticmethod
+    def ensure_executable(path: Any) -> bool:
+        """Ensure file at path has executable permission bits set (u+x, g+x, o+x)"""
+        try:
+            p = Path(path)
+            if p.exists():
+                st = p.stat()
+                p.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+                return True
+        except Exception:
+            pass
+        return False
+
+    @staticmethod
     def slugify(text: str) -> str:
         """Convert name into clean directory and desktop filename slug"""
         text = text.lower().strip()
@@ -529,13 +542,7 @@ class Installer:
         if link_path.is_symlink() or link_path.exists():
             link_path.unlink()
 
-        try:
-            target = Path(exec_path)
-            if target.exists():
-                st = target.stat()
-                target.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        except Exception:
-            pass
+        self.ensure_executable(exec_path)
 
         os.symlink(exec_path, str(link_path))
         return str(link_path)
@@ -592,11 +599,7 @@ class Installer:
         if not exec_full.exists():
             raise ArchiveError(f"Specified executable does not exist: {exec_full}")
 
-        try:
-            st = exec_full.stat()
-            exec_full.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        except Exception:
-            pass
+        self.ensure_executable(exec_full)
 
         icon_full_str = None
         if icon_rel_path:
@@ -675,11 +678,7 @@ class Installer:
         if not exec_full.exists():
             raise ArchiveError(f"Executable does not exist: {exec_full}")
 
-        try:
-            st = exec_full.stat()
-            exec_full.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        except Exception:
-            pass
+        self.ensure_executable(exec_full)
 
         icon_full_str = str(Path(icon_path).resolve()) if icon_path and Path(icon_path).exists() else None
         if not icon_full_str:
@@ -781,8 +780,7 @@ class Installer:
             if not new_exec_path or not new_exec_path.exists():
                 raise ArchiveError("Could not locate executable in the new archive version.")
 
-            st = new_exec_path.stat()
-            new_exec_path.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            self.ensure_executable(new_exec_path)
 
             rel_exec = new_exec_path.relative_to(staging_dir)
             final_exec_path = install_path / rel_exec
@@ -898,11 +896,7 @@ class Installer:
         if not exec_path.exists():
             raise ArchiveError(f"Executable not found at: {exec_path}")
 
-        try:
-            st = exec_path.stat()
-            exec_path.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        except Exception:
-            pass
+        self.ensure_executable(exec_path)
 
         working_dir = Path(app["install_path"])
         if not working_dir.exists():

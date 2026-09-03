@@ -1,5 +1,6 @@
 import os
 import sys
+import stat
 import json
 import time
 import shutil
@@ -154,6 +155,21 @@ class TestTarGzManager(unittest.TestCase):
         self.assertFalse(Path(app["desktop_entry_path"]).exists())
         self.assertFalse(Path(app["symlink_path"]).exists())
         self.assertIsNone(self.db.get_app(app["id"]))
+
+    def test_ensure_executable_helper(self):
+        test_file = self.temp_dir / "test_exec_bit"
+        with open(test_file, "w") as f:
+            f.write("#!/bin/sh\necho test\n")
+        test_file.chmod(0o644)
+
+        res = self.installer.ensure_executable(test_file)
+        self.assertTrue(res)
+        mode = test_file.stat().st_mode
+        self.assertTrue(bool(mode & stat.S_IXUSR))
+
+        # Test with non-existent file
+        res_non_existent = self.installer.ensure_executable(self.temp_dir / "does_not_exist")
+        self.assertFalse(res_non_existent)
 
     def test_register_existing_app(self):
         app = self.installer.register_existing_app(
