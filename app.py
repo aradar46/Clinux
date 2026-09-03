@@ -32,6 +32,7 @@ from targz_manager.machine import MachineManager
 
 from targz_manager.doctor import SystemDoctor
 from targz_manager.disk_analyzer import DiskAnalyzer
+from targz_manager.security import SecurityAuditor
 
 
 
@@ -209,6 +210,11 @@ Examples:
     p_dotfiles.add_argument("action", nargs="?", default="status", choices=["status", "check", "apply", "update", "save", "gnome-out", "gnome-in", "stow", "unstow", "restow"], help="Action to run (default: status)")
     p_dotfiles.add_argument("package", nargs="?", help="Package name for selective stow, unstow, or restow")
     p_dotfiles.add_argument("--message", "-m", help="Commit message when saving")
+
+    p_security = subparsers.add_parser("security", help="Run Security Audit on user configuration, permissions, keys, and open ports")
+    p_security.add_argument("--json", action="store_true", help="Output security report in JSON format")
+    p_security.add_argument("--export", type=str, help="Export security report to specified file path (e.g. clinux-report.txt)")
+    p_security.add_argument("--format", type=str, choices=["text", "json"], default="text", help="Export format when --export is used (default: text)")
 
     args = parser.parse_args()
 
@@ -700,6 +706,23 @@ Examples:
                 print(f"✓ dotfiles {args.action} completed.")
             print()
             return
+
+    elif args.command == "security":
+        auditor = SecurityAuditor()
+        results = auditor.audit_all()
+
+        if args.export:
+            fmt = "json" if args.json or args.format == "json" else "text"
+            out_file = auditor.export_report(results, filepath=args.export, format_type=fmt)
+            print(f"✓ Security report exported to: {out_file}")
+
+        if args.json:
+            import json
+            print(json.dumps(results, indent=2))
+        else:
+            print()
+            print(auditor.format_text_report(results))
+        return
 
     target_port = args.port or 8421
     host = args.host
