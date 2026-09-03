@@ -57,10 +57,16 @@ class ClinuxApp {
     this.setupEventListeners();
     this.startHeartbeat();
     await this.fetchSystemInfo();
+    await this.fetchOptions();
     await this.refreshApps();
     await this.fetchDiscovered();
     await this.refreshDashboardStats();
-    this.setTab('dashboard');
+    if (this.options && this.options.behavior && !this.options.behavior.start_dashboard) {
+      const firstTab = (this.options.tabs.find(t => t.visible) || {}).id || 'dashboard';
+      this.setTab(firstTab);
+    } else {
+      this.setTab('dashboard');
+    }
   }
 
   startHeartbeat() {
@@ -335,6 +341,11 @@ class ClinuxApp {
       ai: document.getElementById('aiView'),
       dotfiles: document.getElementById('dotfilesView'),
       services: document.getElementById('servicesView'),
+      options: document.getElementById('optionsView'),
+      security: document.getElementById('securityView'),
+      projects: document.getElementById('projectsView'),
+      network: document.getElementById('networkView'),
+      doctor: document.getElementById('doctorView'),
       empty: document.getElementById('emptyState')
     };
 
@@ -342,12 +353,29 @@ class ClinuxApp {
       if (v) v.style.display = 'none';
     });
 
+    this.renderSidebarModules();
+
     if (tab === 'dashboard') {
       if (views.dashboard) views.dashboard.style.display = 'flex';
       this.refreshDashboardStats();
     } else if (tab === 'cleaner') {
       if (views.cleaner) views.cleaner.style.display = 'flex';
       this.scanCleaner(false);
+    } else if (tab === 'options') {
+      if (views.options) views.options.style.display = 'flex';
+      this.populateOptionsForm();
+    } else if (tab === 'security') {
+      if (views.security) views.security.style.display = 'flex';
+      this.fetchSecurityScan();
+    } else if (tab === 'projects') {
+      if (views.projects) views.projects.style.display = 'flex';
+      this.fetchProjectsList();
+    } else if (tab === 'network') {
+      if (views.network) views.network.style.display = 'flex';
+      this.fetchNetworkStatus();
+    } else if (tab === 'doctor') {
+      if (views.doctor) views.doctor.style.display = 'flex';
+      this.fetchDoctorDiagnosis();
     } else if (tab === 'services') {
       if (views.services) views.services.style.display = 'block';
     } else if (tab === 'storage') {
@@ -1731,18 +1759,430 @@ class ClinuxApp {
   // =========================================================================
   // Modal & Help Dialog Utilities
   // =========================================================================
+  async fetchOptions() {
+    try {
+      const res = await fetch('/api/options');
+      const data = await res.json();
+      if (data.options) {
+        this.options = data.options;
+        this.applyOptionsToUI();
+      }
+    } catch (e) {
+      console.error('Failed to fetch options:', e);
+    }
+  }
+
+  applyOptionsToUI() {
+    if (!this.options) return;
+
+    // Appearance
+    const appr = this.options.appearance || {};
+    const theme = appr.theme || 'classic-green';
+    const font = appr.font || 'bitmap';
+    const crt = appr.crt_effects !== false;
+
+    if (theme === 'classic-green') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+
+    document.body.className = '';
+    document.body.classList.add(`font-${font}`);
+    if (crt) document.body.classList.add('crt-mode');
+
+    const crtBtn = document.getElementById('crtToggleBtn');
+    if (crtBtn) crtBtn.textContent = crt ? 'CRT: ON' : 'CRT: OFF';
+
+    this.renderSidebarModules();
+    this.populateOptionsForm();
+  }
+
+  renderSidebarModules() {
+    const container = document.getElementById('sidebarModulesTree');
+    if (!container || !this.options || !this.options.tabs) return;
+
+    const visibleTabs = this.options.tabs.filter(t => t.visible);
+    let html = '';
+
+    visibleTabs.forEach(t => {
+      const activeClass = this.currentTab === t.id ? 'active' : '';
+      const prefix = this.currentTab === t.id ? '>' : ' ';
+
+      let badgeHtml = '';
+      if (t.id === 'cleaner') {
+        badgeHtml = `<span class="nav-badge nav-badge-warn" id="cleanerTotalBadge">0 B</span>`;
+      } else if (t.id === 'apps') {
+        badgeHtml = `<span class="nav-badge" id="appsNavBadge">${this.apps ? this.apps.length : 0}</span>`;
+      } else if (t.id === 'ai') {
+        badgeHtml = `<span class="nav-badge" id="aiSkillsBadge">${this.aiSkills ? this.aiSkills.length : 0}</span>`;
+      } else if (t.id === 'dotfiles') {
+        badgeHtml = `<span class="nav-badge nav-badge-warn" id="dotfilesBadge" style="display:none;">dirty</span>`;
+      }
+
+      html += `
+        <div class="nav-item ${activeClass}" id="nav_${t.id}" onclick="app.setTab('${t.id}')">
+          <span>${prefix} ${t.name}</span>
+          ${badgeHtml}
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+  }
+
+  populateOptionsForm() {
+    if (!this.options) return;
+
+    // Tabs List
+    this.renderOptionsTabsList();
+
+    // Appearance
+    const appr = this.options.appearance || {};
+    const themeSel = document.getElementById('optThemeSelect');
+    if (themeSel) themeSel.value = appr.theme || 'classic-green';
+
+    const fontSel = document.getElementById('optFontSelect');
+    if (fontSel) fontSel.value = appr.font || 'bitmap';
+
+    const crtChk = document.getElementById('optCrtEffects');
+    if (crtChk) crtChk.checked = appr.crt_effects !== false;
+
+    const animChk = document.getElementById('optAnimations');
+    if (animChk) animChk.checked = !!appr.animations;
+
+    // Behavior
+    const beh = this.options.behavior || {};
+    const confirmChk = document.getElementById('optConfirmDestructive');
+    if (confirmChk) confirmChk.checked = beh.confirm_destructive !== false;
+
+    const cmdsChk = document.getElementById('optShowCommands');
+    if (cmdsChk) cmdsChk.checked = beh.show_commands !== false;
+
+    const bkpChk = document.getElementById('optCreateBackups');
+    if (bkpChk) bkpChk.checked = beh.create_backups !== false;
+
+    const startDashChk = document.getElementById('optStartDashboard');
+    if (startDashChk) startDashChk.checked = beh.start_dashboard !== false;
+
+    // Cleaner
+    const cln = (this.options.modules && this.options.modules.cleaner) || {};
+    const pkgs = cln.package_managers || {};
+    ['pacman', 'yay', 'flatpak', 'apt', 'dnf'].forEach(pm => {
+      const el = document.getElementById(`optCleaner${pm.charAt(0).toUpperCase() + pm.slice(1)}`);
+      if (el) el.checked = pkgs[pm] !== false;
+    });
+
+    const devs = cln.developer_caches || {};
+    ['pip', 'uv', 'npm', 'cargo', 'conda', 'r'].forEach(d => {
+      const el = document.getElementById(`optCleaner${d.charAt(0).toUpperCase() + d.slice(1)}`);
+      if (el) el.checked = devs[d] !== false;
+    });
+
+    const reqConfirm = document.getElementById('optCleanerReqConfirm');
+    if (reqConfirm) reqConfirm.checked = cln.require_confirmation !== false;
+
+    const showSpace = document.getElementById('optCleanerShowSpace');
+    if (showSpace) showSpace.checked = cln.show_reclaimable_space !== false;
+
+    // Security
+    const sec = (this.options.modules && this.options.modules.security) || {};
+    const scan = sec.scan || {};
+    const secKeys = {
+      optSecSsh: 'ssh',
+      optSecSecrets: 'secrets',
+      optSecPath: 'path',
+      optSecPerms: 'permissions',
+      optSecGit: 'git',
+      optSecNet: 'network',
+      optSecServices: 'user_services'
+    };
+    Object.entries(secKeys).forEach(([elId, key]) => {
+      const el = document.getElementById(elId);
+      if (el) el.checked = scan[key] !== false;
+    });
+
+    const priv = sec.privacy || {};
+    const localOnly = document.getElementById('optSecLocalOnly');
+    if (localOnly) localOnly.checked = priv.local_scans_only !== false;
+
+    const neverUp = document.getElementById('optSecNeverUpload');
+    if (neverUp) neverUp.checked = priv.never_upload_reports !== false;
+
+    const thresholdSel = document.getElementById('optSecThreshold');
+    if (thresholdSel) thresholdSel.value = sec.severity_threshold || 'LOW';
+  }
+
+  renderOptionsTabsList() {
+    const list = document.getElementById('optionsTabsList');
+    if (!list || !this.options || !this.options.tabs) return;
+
+    const visibleCount = this.options.tabs.filter(t => t.visible).length;
+    const totalCount = this.options.tabs.length;
+
+    const visEl = document.getElementById('optionsVisibleCount');
+    if (visEl) visEl.textContent = visibleCount;
+
+    const totEl = document.getElementById('optionsTotalCount');
+    if (totEl) totEl.textContent = totalCount;
+
+    let html = '';
+    this.options.tabs.forEach((t, idx) => {
+      const checked = t.visible ? 'checked' : '';
+      html += `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:4px; border-bottom:1px dashed var(--c-shadow);">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="color:var(--text-muted);">☰</span>
+            <input type="checkbox" id="chk_tab_${t.id}" ${checked} onchange="app.toggleOptionTab('${t.id}', this.checked)">
+            <label for="chk_tab_${t.id}" style="font-weight:bold; cursor:pointer;">${t.name}</label>
+          </div>
+          <div style="display:flex; gap:4px;">
+            <button class="win-btn" onclick="app.moveOptionTab(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} title="Move Up">↑</button>
+            <button class="win-btn" onclick="app.moveOptionTab(${idx}, 1)" ${idx === totalCount - 1 ? 'disabled' : ''} title="Move Down">↓</button>
+          </div>
+        </div>
+      `;
+    });
+
+    list.innerHTML = html;
+  }
+
+  moveOptionTab(idx, direction) {
+    if (!this.options || !this.options.tabs) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= this.options.tabs.length) return;
+
+    const temp = this.options.tabs[idx];
+    this.options.tabs[idx] = this.options.tabs[newIdx];
+    this.options.tabs[newIdx] = temp;
+
+    this.renderOptionsTabsList();
+  }
+
+  toggleOptionTab(tabId, visible) {
+    if (!this.options || !this.options.tabs) return;
+    const tab = this.options.tabs.find(t => t.id === tabId);
+    if (tab) {
+      tab.visible = visible;
+      this.renderOptionsTabsList();
+    }
+  }
+
+  async applyOptions() {
+    if (!this.options) return;
+
+    // Appearance
+    this.options.appearance = {
+      theme: document.getElementById('optThemeSelect').value,
+      font: document.getElementById('optFontSelect').value,
+      crt_effects: document.getElementById('optCrtEffects').checked,
+      animations: document.getElementById('optAnimations').checked
+    };
+
+    // Behavior
+    this.options.behavior = {
+      confirm_destructive: document.getElementById('optConfirmDestructive').checked,
+      show_commands: document.getElementById('optShowCommands').checked,
+      create_backups: document.getElementById('optCreateBackups').checked,
+      start_dashboard: document.getElementById('optStartDashboard').checked
+    };
+
+    // Cleaner
+    this.options.modules = this.options.modules || {};
+    this.options.modules.cleaner = {
+      package_managers: {
+        pacman: document.getElementById('optCleanerPacman').checked,
+        yay: document.getElementById('optCleanerYay').checked,
+        flatpak: document.getElementById('optCleanerFlatpak').checked,
+        apt: document.getElementById('optCleanerApt').checked,
+        dnf: document.getElementById('optCleanerDnf').checked
+      },
+      developer_caches: {
+        pip: document.getElementById('optCleanerPip').checked,
+        uv: document.getElementById('optCleanerUv').checked,
+        npm: document.getElementById('optCleanerNpm').checked,
+        cargo: document.getElementById('optCleanerCargo').checked,
+        conda: document.getElementById('optCleanerConda').checked,
+        r: document.getElementById('optCleanerR').checked
+      },
+      require_confirmation: document.getElementById('optCleanerReqConfirm').checked,
+      show_reclaimable_space: document.getElementById('optCleanerShowSpace').checked
+    };
+
+    // Security
+    this.options.modules.security = {
+      scan: {
+        ssh: document.getElementById('optSecSsh').checked,
+        secrets: document.getElementById('optSecSecrets').checked,
+        path: document.getElementById('optSecPath').checked,
+        permissions: document.getElementById('optSecPerms').checked,
+        git: document.getElementById('optSecGit').checked,
+        network: document.getElementById('optSecNet').checked,
+        user_services: document.getElementById('optSecServices').checked
+      },
+      privacy: {
+        local_scans_only: document.getElementById('optSecLocalOnly').checked,
+        never_upload_reports: document.getElementById('optSecNeverUpload').checked
+      },
+      severity_threshold: document.getElementById('optSecThreshold').value
+    };
+
+    try {
+      const res = await fetch('/api/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ options: this.options })
+      });
+      const data = await res.json();
+      if (data.success) {
+        this.options = data.options;
+        this.applyOptionsToUI();
+        this.toast('✓ Options saved and applied successfully!', 'info');
+      }
+    } catch (e) {
+      this.toast('Failed to save options', 'error');
+    }
+  }
+
+  async resetOptions() {
+    if (!confirm('Reset all Clinux options to default values?')) return;
+    try {
+      const res = await fetch('/api/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        this.options = data.options;
+        this.applyOptionsToUI();
+        this.toast('✓ Options reset to default values', 'info');
+      }
+    } catch (e) {
+      this.toast('Failed to reset options', 'error');
+    }
+  }
+
+  async fetchSecurityScan() {
+    const list = document.getElementById('securityChecksList');
+    if (!list) return;
+    list.innerHTML = '<div class="terminal-box">Running security audit...</div>';
+    try {
+      const res = await fetch('/api/security/scan');
+      const data = await res.json();
+      let html = '';
+      (data.checks || []).forEach(c => {
+        const badgeColor = c.status === 'PASS' ? 'var(--c-terminal-green-bright)' : (c.status === 'WARN' ? 'var(--c-warning-yellow)' : 'var(--text-muted)');
+        html += `
+          <div class="terminal-box" style="padding:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <strong style="color:var(--c-warm-beige);">${c.name}</strong>
+              <span style="color:${badgeColor}; font-weight:bold;">[ ${c.status} ]</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${c.details}</div>
+          </div>
+        `;
+      });
+      list.innerHTML = html || '<div class="terminal-box">No security checks returned.</div>';
+    } catch (e) {
+      list.innerHTML = '<div class="terminal-box terminal-line-err">Error loading security audit results.</div>';
+    }
+  }
+
+  async fetchProjectsList() {
+    const grid = document.getElementById('projectsListGrid');
+    if (!grid) return;
+    grid.innerHTML = '<div class="terminal-box">Scanning for developer projects...</div>';
+    try {
+      const res = await fetch('/api/projects/list');
+      const data = await res.json();
+      let html = '';
+      (data.projects || []).forEach(p => {
+        html += `
+          <div class="retro-panel" style="margin-top:0;">
+            <div class="retro-panel-title">${p.type}</div>
+            <div style="font-weight:bold; color:var(--c-warm-beige); margin-bottom:4px;">${p.name}</div>
+            <div style="font-size:11px; color:var(--text-muted); text-overflow:ellipsis; overflow:hidden;">${p.path}</div>
+            <div style="margin-top:6px; font-size:11px;">Branch: <strong style="color:var(--c-terminal-green);">${p.branch}</strong></div>
+          </div>
+        `;
+      });
+      grid.innerHTML = html || '<div class="terminal-box">No developer projects found.</div>';
+    } catch (e) {
+      grid.innerHTML = '<div class="terminal-box terminal-line-err">Error loading project repositories.</div>';
+    }
+  }
+
+  async fetchNetworkStatus() {
+    const box = document.getElementById('networkStatusContent');
+    if (!box) return;
+    box.innerHTML = 'Scanning network ports...';
+    try {
+      const res = await fetch('/api/network/status');
+      const data = await res.json();
+      let html = `HOSTNAME: ${data.hostname}\nLOCAL IP: ${data.local_ip}\nONLINE: ${data.online ? 'YES' : 'NO'}\n\nLISTENING PORTS:\n`;
+      (data.listening_ports || []).forEach(p => {
+        html += `  • Port ${p.port} (${p.address}:${p.port}) - ${p.state}\n`;
+      });
+      box.textContent = html;
+    } catch (e) {
+      box.textContent = 'Error scanning network status.';
+    }
+  }
+
+  async fetchDoctorDiagnosis() {
+    const box = document.getElementById('doctorContent');
+    if (!box) return;
+    box.innerHTML = 'Running System Doctor diagnostics...';
+    try {
+      const res = await fetch('/api/doctor');
+      const data = await res.json();
+      let html = `SYSTEM DOCTOR DIAGNOSIS REPORT:\n`;
+      html += `Failed Services: ${data.failed_services ? data.failed_services.length : 0}\n`;
+      html += `Old Kernels: ${data.old_kernels ? data.old_kernels.length : 0}\n`;
+      html += `Broken Shortcuts: ${data.broken_desktop_entries ? data.broken_desktop_entries.length : 0}\n`;
+      html += `Reclaimable Cache: ${data.reclaimable_cache_formatted || '0 B'}\n\n`;
+
+      if (data.all_problems && data.all_problems.length > 0) {
+        html += `PROBLEMS DETECTED:\n`;
+        data.all_problems.forEach((p, idx) => {
+          html += ` [${idx + 1}] ${p.description}\n`;
+          if (p.fix_command) html += `     Fix: ${p.fix_command}\n`;
+        });
+      } else {
+        html += `✓ All systems healthy! No critical issues found.`;
+      }
+      box.textContent = html;
+    } catch (e) {
+      box.textContent = 'Error running System Doctor diagnostics.';
+    }
+  }
+
+  openAboutModal() {
+    this.openModal('aboutModal');
+  }
+
+  quitApp() {
+    if (confirm('Shut down Clinux web server and exit?')) {
+      fetch('/api/shutdown', { method: 'POST' }).catch(() => {});
+      this.toast('Server shut down. You can close this tab.', 'info');
+      setTimeout(() => window.close(), 1000);
+    }
+  }
+
   openHelpModal() {
     this.openModal('helpModal');
   }
 
   openCommandPalette() {
-    const cmd = prompt('CLINUX COMMAND PALETTE:\n1: Dashboard\n2: Cleaner\n3: Portable Apps\n4: AI & Skills\n5: Dotfiles\n6: Services\nq: Exit', '1');
+    const cmd = prompt('CLINUX COMMAND PALETTE:\n1: Dashboard\n2: Cleaner\n3: Portable Apps\n4: AI & Skills\n5: Dotfiles\n6: Services\n7: Options\nq: Exit', '1');
     if (cmd === '1') this.setTab('dashboard');
     else if (cmd === '2') this.setTab('cleaner');
     else if (cmd === '3') this.setTab('all');
     else if (cmd === '4') this.setTab('ai');
     else if (cmd === '5') this.setTab('dotfiles');
     else if (cmd === '6') this.setTab('services');
+    else if (cmd === '7') this.setTab('options');
   }
 
   closeWindow() {
