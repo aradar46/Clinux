@@ -323,20 +323,7 @@ class SystemScanner:
         discovered: List[Dict[str, Any]] = []
         seen_paths: Set[str] = set()
 
-        discovered.extend(self._discover_from_desktop_entries(managed_paths, managed_execs, managed_names, seen_paths))
-        discovered.extend(self._discover_from_directory_scans(managed_paths, managed_execs, managed_names, seen_paths))
-        discovered.extend(self._discover_from_downloads(managed_names, seen_paths))
-
-        self._annotate_ignored_status(discovered)
-
-        return discovered
-
-    def _discover_from_desktop_entries(
-        self, managed_paths: Set[str], managed_execs: Set[str], managed_names: Set[str], seen_paths: Set[str]
-    ) -> List[Dict[str, Any]]:
-        discovered: List[Dict[str, Any]] = []
         desktop_candidates = self.scan_desktop_entries()
-
         for cand in desktop_candidates:
             inst_p = str(Path(cand["install_path"]).resolve())
             exec_p = str(Path(cand["executable_path"]).resolve())
@@ -353,6 +340,7 @@ class SystemScanner:
             try:
                 p_dir = Path(inst_p)
                 if p_dir.exists() and p_dir.is_dir():
+                    # Fast directory size calculation using os.scandir (avoiding slow Path.rglob)
                     calc_size = compute_directory_size(p_dir)
                 elif Path(exec_p).exists():
                     calc_size = Path(exec_p).stat().st_size
@@ -364,12 +352,6 @@ class SystemScanner:
             cand["needs_sudo"] = needs_sudo
             discovered.append(cand)
 
-        return discovered
-
-    def _discover_from_directory_scans(
-        self, managed_paths: Set[str], managed_execs: Set[str], managed_names: Set[str], seen_paths: Set[str]
-    ) -> List[Dict[str, Any]]:
-        discovered: List[Dict[str, Any]] = []
         ignored_dir_names = {
             "containerd", "stacks", "node_modules", "__pycache__", ".trash", "lost+found",
             "hidden", "temp", "tmp", "logs", "cache", ".git", ".local", "dist-packages", "site-packages"
@@ -414,14 +396,7 @@ class SystemScanner:
             except PermissionError:
                 pass
 
-        return discovered
-
-    def _discover_from_downloads(
-        self, managed_names: Set[str], seen_paths: Set[str]
-    ) -> List[Dict[str, Any]]:
-        discovered: List[Dict[str, Any]] = []
         downloads_dir = Path.home() / "Downloads"
-
         if downloads_dir.exists():
             for archive in downloads_dir.glob("*.tar.gz"):
                 name, ver, disp = self.installer.guess_name_and_version(archive.name)
@@ -446,11 +421,10 @@ class SystemScanner:
                         "discovery_reason": "Found in ~/Downloads"
                     })
 
-        return discovered
-
-    def _annotate_ignored_status(self, discovered: List[Dict[str, Any]]) -> None:
         ignored_keys = {row["key"] for row in self.db.list_ignored_discoveries()}
         for item in discovered:
             key = item.get("archive_path") or item.get("install_path")
             item["ignore_key"] = key
             item["ignored"] = key in ignored_keys
+
+        return discovered
