@@ -1,42 +1,35 @@
 /**
- * TarGz Manager - Frontend SPA Application
- * Pure Vanilla JavaScript with Zero External Dependencies
+ * Clinux 1.0 - Vintage 1990s Linux Utility JavaScript
+ * Pure Vanilla JS with Zero External Dependencies
  */
 
-class TarGzApp {
+class ClinuxApp {
   constructor() {
     this.apps = [];
     this.discoveredApps = [];
     this.stats = {};
     this.systemInfo = {};
-    this.currentTab = 'all';
+    this.currentTab = 'dashboard';
     this.currentSort = 'name_asc';
     this.searchQuery = '';
-    
-    // Wizard State
-    this.currentInstallStep = 1;
-    this.activeInspection = null;
-    this.selectedExecRelPath = null;
-    this.selectedIconRelPath = null;
-    
-    // Browser Modal State
-    this.browserMode = 'all';
-    this.browserTargetInputId = null;
-    this.browserOnSelectCallback = null;
-    this.browserCurrentPath = '';
-    this.browserSelectedItem = null;
-    
-    // Active App in Focus (for edit/update/uninstall)
+
+    // Selected Navigation Index for Keyboard Navigation
+    this.selectedNavIdx = 0;
+    this.navItemKeys = ['dashboard', 'cleaner', 'storage', 'services', 'all', 'ai', 'dotfiles'];
+
+    // CRT Effect
+    this.crtEnabled = true;
+
+    // Active App in Focus
     this.activeApp = null;
     this.clientId = 'client_' + Math.random().toString(36).substring(2, 10);
 
-    // Clean Master State
+    // Cleaner State
     this.cleanerData = null;
     this.selectedCleanerTargets = new Set();
-    this.pendingSudoTargets = [];
     this.isCleaning = false;
 
-    // AI Tooling & Skills State
+    // AI State
     this.aiSubTab = 'skills';
     this.aiSkills = [];
     this.aiCategories = [];
@@ -45,14 +38,26 @@ class TarGzApp {
     this.aiFilterCategory = 'all';
     this.aiSkillSearchQuery = '';
 
+    // File Browser
+    this.browserMode = 'all';
+    this.browserTargetInputId = null;
+    this.browserOnSelectCallback = null;
+    this.browserCurrentPath = '';
+    this.browserSelectedItem = null;
+
     this.init();
   }
 
   async init() {
     this.setupTheme();
+    this.setupCRT();
     this.setupEventListeners();
     this.startHeartbeat();
-    this.refreshApps();
+    await this.fetchSystemInfo();
+    await this.refreshApps();
+    await this.fetchDiscovered();
+    await this.refreshDashboardStats();
+    this.setTab('dashboard');
   }
 
   startHeartbeat() {
@@ -67,103 +72,134 @@ class TarGzApp {
     sendPing();
     setInterval(sendPing, 3000);
 
-    // Re-ping immediately whenever tab becomes visible again
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        sendPing();
-      }
+      if (document.visibilityState === 'visible') sendPing();
     });
 
-    // Notify server when tab or window is actually closing
     const handleClose = () => {
       if (navigator.sendBeacon) {
         navigator.sendBeacon('/api/shutdown', JSON.stringify({ client_id: this.clientId }));
       }
     };
-
     window.addEventListener('beforeunload', handleClose);
     window.addEventListener('pagehide', handleClose);
   }
 
   // =========================================================================
-  // Theme & Event Listeners
+  // Theme & CRT Effect Settings
   // =========================================================================
   setupTheme() {
-    const savedTheme = localStorage.getItem('targz_theme') || 'dark';
+    const savedTheme = localStorage.getItem('clinux_theme') || 'dark';
     document.documentElement.setAttribute('data-theme', savedTheme);
-    this.updateThemeIcon(savedTheme);
   }
 
   toggleTheme() {
     const current = document.documentElement.getAttribute('data-theme') || 'dark';
     const next = current === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('targz_theme', next);
-    this.updateThemeIcon(next);
+    localStorage.setItem('clinux_theme', next);
+    this.toast(`Theme set to ${next}`, 'info');
   }
 
-  updateThemeIcon(theme) {
-    const btn = document.getElementById('themeToggleBtn');
-    if (!btn) return;
-    if (theme === 'dark') {
-      btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`;
+  setupCRT() {
+    const savedCRT = localStorage.getItem('clinux_crt');
+    this.crtEnabled = savedCRT !== 'off';
+    if (this.crtEnabled) {
+      document.body.classList.add('crt-mode');
     } else {
-      btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`;
+      document.body.classList.remove('crt-mode');
     }
+    this.updateCRTButton();
   }
 
+  toggleCRT() {
+    this.crtEnabled = !this.crtEnabled;
+    if (this.crtEnabled) {
+      document.body.classList.add('crt-mode');
+      localStorage.setItem('clinux_crt', 'on');
+    } else {
+      document.body.classList.remove('crt-mode');
+      localStorage.setItem('clinux_crt', 'off');
+    }
+    this.updateCRTButton();
+    this.toast(`CRT Effect: ${this.crtEnabled ? 'ON' : 'OFF'}`, 'info');
+  }
+
+  updateCRTButton() {
+    const btn = document.getElementById('crtToggleBtn');
+    if (btn) btn.innerText = `CRT: ${this.crtEnabled ? 'ON' : 'OFF'}`;
+  }
+
+  // =========================================================================
+  // Event Listeners & Keyboard Navigation
+  // =========================================================================
   setupEventListeners() {
-    // Search input
     const searchInput = document.getElementById('searchInput');
     if (searchInput) {
       searchInput.addEventListener('input', (e) => {
         this.searchQuery = e.target.value.trim();
-        this.renderApps();
+        if (this.currentTab === 'all' || this.currentTab === 'ignored' || this.currentTab === 'discovered') {
+          this.renderApps();
+        }
       });
     }
 
-    // Keyboard Shortcuts
+    // Keyboard Shortcuts (Arrow keys, Esc, /, ?, Ctrl+K, q)
     window.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+        if (e.key === 'Escape') {
+          document.activeElement.blur();
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        this.navigateTree(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        this.navigateTree(-1);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        this.setTab(this.navItemKeys[this.selectedNavIdx]);
+      } else if (e.key === 'Escape') {
+        this.closeAllModals();
+      } else if (e.key === '/') {
         e.preventDefault();
         searchInput?.focus();
-      }
-      if (e.key === 'Escape') {
+      } else if (e.key === '?') {
+        e.preventDefault();
+        this.openHelpModal();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        this.openCommandPalette();
+      } else if (e.key === 'q') {
+        e.preventDefault();
         this.closeAllModals();
       }
     });
 
-    // Drag and Drop Zone
-    const dropzone = document.getElementById('archiveDropzone');
-    if (dropzone) {
-      ['dragenter', 'dragover'].forEach(name => {
-        dropzone.addEventListener(name, (e) => {
-          e.preventDefault();
-          dropzone.classList.add('drag-active');
-        });
-      });
-      ['dragleave', 'drop'].forEach(name => {
-        dropzone.addEventListener(name, (e) => {
-          e.preventDefault();
-          dropzone.classList.remove('drag-active');
-        });
-      });
-      dropzone.addEventListener('drop', (e) => {
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-          this.uploadFile(files[0]);
-        }
-      });
-    }
-
-    // Modal backdrop clicks
     document.querySelectorAll('.modal-backdrop').forEach(modal => {
       modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-          this.closeModal(modal.id);
-        }
+        if (e.target === modal) this.closeModal(modal.id);
       });
     });
+  }
+
+  navigateTree(dir) {
+    this.selectedNavIdx = (this.selectedNavIdx + dir + this.navItemKeys.length) % this.navItemKeys.length;
+    const targetTab = this.navItemKeys[this.selectedNavIdx];
+    this.highlightNavItem(targetTab);
+  }
+
+  highlightNavItem(tab) {
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+    let elId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    if (tab === 'all') elId = 'navApps';
+
+    const targetEl = document.getElementById(elId);
+    if (targetEl) targetEl.classList.add('active');
   }
 
   // =========================================================================
@@ -174,9 +210,31 @@ class TarGzApp {
       const res = await fetch('/api/system-info');
       if (res.ok) {
         this.systemInfo = await res.json();
+        const u = document.getElementById('statusUser');
+        if (u) u.innerText = this.systemInfo.user || 'user';
       }
     } catch (e) {
-      console.error('Failed to load system info:', e);
+      console.error('Failed system info:', e);
+    }
+  }
+
+  async refreshDashboardStats() {
+    try {
+      const storageRes = await fetch('/api/ai/storage');
+      if (storageRes.ok) {
+        const sData = await storageRes.json();
+        const aiEl = document.getElementById('dashAIModelSize');
+        if (aiEl) aiEl.innerText = sData.total_size_formatted || '0 GB';
+      }
+
+      const cleanRes = await fetch('/api/cleaner/scan');
+      if (cleanRes.ok) {
+        const cData = await cleanRes.json();
+        const clEl = document.getElementById('dashCleanerSize');
+        if (clEl) clEl.innerText = cData.total_size_formatted || '0 GB';
+      }
+    } catch (e) {
+      console.error('Failed dashboard stats:', e);
     }
   }
 
@@ -188,40 +246,27 @@ class TarGzApp {
         this.apps = data.apps || [];
         const activeCount = this.apps.filter(a => !a.ignored).length;
         const countAll = document.getElementById('countAllApps');
-        const appsNavBadge = document.getElementById('appsNavBadge');
+        const appsBadge = document.getElementById('appsNavBadge');
         if (countAll) countAll.innerText = activeCount;
-        if (appsNavBadge) appsNavBadge.innerText = activeCount;
+        if (appsBadge) appsBadge.innerText = activeCount;
         this.updateIgnoredCount();
-        this.renderApps();
+        if (this.currentTab === 'all' || this.currentTab === 'ignored') {
+          this.renderApps();
+        }
       }
     } catch (e) {
-      this.toast('Error fetching applications', 'error');
-    }
-  }
-
-  async refreshStats() {
-    try {
-      const res = await fetch('/api/stats');
-      if (res.ok) {
-        const data = await res.json();
-        this.stats = data.stats || {};
-      }
-    } catch (e) {
-      console.error('Failed to load stats:', e);
+      this.toast('Error fetching apps', 'error');
     }
   }
 
   async refreshAll() {
-    this.toast('Refreshing system info & applications...', 'info');
+    this.toast('Refreshing system info...', 'info');
     await this.refreshApps();
-    await this.refreshStats();
     await this.fetchDiscovered();
+    await this.refreshDashboardStats();
     this.toast('System refresh complete', 'success');
   }
 
-  // =========================================================================
-  // Auto-Discovery of Manual Applications
-  // =========================================================================
   async fetchDiscovered() {
     try {
       const res = await fetch('/api/discovered');
@@ -240,27 +285,21 @@ class TarGzApp {
 
   renderDiscoveredBanner() {
     const banner = document.getElementById('discoveredBanner');
-    const taskPill = document.getElementById('taskTabDiscovered');
+    const navItem = document.getElementById('navDiscovered');
     const countPill = document.getElementById('discoveredCountPill');
-    const pillTabCount = document.getElementById('pillDiscoveredCount');
-    const bannerText = document.getElementById('discoveredBannerText');
+    const navBadge = document.getElementById('pillDiscoveredCount');
 
     const available = this.getActiveDiscovered();
 
     if (available.length > 0) {
-      if (banner) banner.style.display = 'flex';
-      if (taskPill) taskPill.style.display = 'inline-flex';
+      if (banner) banner.style.display = 'block';
+      if (navItem) navItem.style.display = 'flex';
       if (countPill) countPill.innerText = available.length;
-      if (pillTabCount) pillTabCount.innerText = available.length;
-      if (bannerText) {
-        bannerText.innerText = `Found ${available.length} manual application(s) or tarballs in /opt, ~/Applications, or desktop shortcuts ready to be managed.`;
-      }
+      if (navBadge) navBadge.innerText = available.length;
     } else {
       if (banner) banner.style.display = 'none';
-      if (taskPill) taskPill.style.display = 'none';
-      if (this.currentTab === 'discovered') {
-        this.setTab('all');
-      }
+      if (navItem) navItem.style.display = 'none';
+      if (this.currentTab === 'discovered') this.setTab('all');
     }
   }
 
@@ -277,6 +316,209 @@ class TarGzApp {
   dismissDiscoveredBanner() {
     const banner = document.getElementById('discoveredBanner');
     if (banner) banner.style.display = 'none';
+  }
+
+  // =========================================================================
+  // View Navigation Handling
+  // =========================================================================
+  setTab(tab) {
+    this.currentTab = tab;
+    this.highlightNavItem(tab);
+
+    const views = {
+      dashboard: document.getElementById('dashboardView'),
+      cleaner: document.getElementById('cleanerView'),
+      apps: document.getElementById('appsView'),
+      ai: document.getElementById('aiView'),
+      dotfiles: document.getElementById('dotfilesView'),
+      services: document.getElementById('servicesView'),
+      empty: document.getElementById('emptyState')
+    };
+
+    Object.values(views).forEach(v => {
+      if (v) v.style.display = 'none';
+    });
+
+    if (tab === 'dashboard') {
+      if (views.dashboard) views.dashboard.style.display = 'flex';
+      this.refreshDashboardStats();
+    } else if (tab === 'cleaner') {
+      if (views.cleaner) views.cleaner.style.display = 'flex';
+      this.scanCleaner(false);
+    } else if (tab === 'services') {
+      if (views.services) views.services.style.display = 'block';
+    } else if (tab === 'storage') {
+      if (views.ai) views.ai.style.display = 'flex';
+      this.setAISubTab('storage');
+    } else if (tab === 'ai') {
+      if (views.ai) views.ai.style.display = 'flex';
+      this.loadAIData();
+    } else if (tab === 'dotfiles') {
+      if (views.dotfiles) views.dotfiles.style.display = 'flex';
+      this.fetchDotfilesStatus();
+    } else {
+      // Portable Apps (all, ignored, discovered)
+      if (views.apps) views.apps.style.display = 'flex';
+      this.renderApps();
+    }
+  }
+
+  setSort(sortVal) {
+    this.currentSort = sortVal;
+    this.refreshApps();
+  }
+
+  getFilteredApps() {
+    if (this.currentTab === 'discovered') {
+      return this.getActiveDiscovered();
+    }
+    if (this.currentTab === 'ignored') {
+      return [
+        ...this.apps.filter(a => a.ignored),
+        ...this.discoveredApps.filter(d => d.ignored)
+      ];
+    }
+    let filtered = this.apps.filter(a => !a.ignored);
+    if (this.searchQuery) {
+      const q = this.searchQuery.toLowerCase();
+      filtered = filtered.filter(a =>
+        a.name.toLowerCase().includes(q) ||
+        (a.display_name && a.display_name.toLowerCase().includes(q)) ||
+        (a.description && a.description.toLowerCase().includes(q))
+      );
+    }
+    return filtered;
+  }
+
+  // =========================================================================
+  // Render Applications Grid (Retro Panel Cards)
+  // =========================================================================
+  renderApps() {
+    const grid = document.getElementById('appsGrid');
+    const emptyState = document.getElementById('emptyState');
+    const list = this.getFilteredApps();
+
+    if (!list || list.length === 0) {
+      if (grid) grid.innerHTML = '';
+      if (emptyState) emptyState.style.display = 'block';
+      return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+
+    if (this.currentTab === 'discovered') {
+      grid.innerHTML = this.discoveredApps.map((item, idx) => {
+        return item.ignored ? '' : this.renderDiscoveredCard(item, idx);
+      }).join('');
+    } else if (this.currentTab === 'ignored') {
+      const ignoredAppsHtml = this.apps.filter(a => a.ignored).map(app => this.renderAppCard(app)).join('');
+      const ignoredDiscoveredHtml = this.discoveredApps.map((item, idx) => {
+        return item.ignored ? this.renderDiscoveredCard(item, idx) : '';
+      }).join('');
+      grid.innerHTML = ignoredAppsHtml + ignoredDiscoveredHtml;
+    } else {
+      grid.innerHTML = list.map(app => this.renderAppCard(app)).join('');
+    }
+  }
+
+  renderDiscoveredCard(item, idx) {
+    return `
+      <div class="retro-panel" id="discovered-card-${idx}">
+        <div class="retro-panel-title">DISCOVERED APP #${idx + 1}</div>
+        <div style="font-size:14px; font-weight:bold; color:var(--c-terminal-green-bright); margin-bottom:4px;">
+          ${this.escapeHtml(item.display_name)}
+        </div>
+        <div style="color:var(--text-muted); font-size:11px; margin-bottom:6px;">
+          Version: ${this.escapeHtml(item.version || '1.0')} | Size: ${item.size_formatted}
+        </div>
+        <div class="terminal-box" style="margin-bottom:8px; max-height:50px;">
+          LOC: ${this.escapeHtml(this.shortenPath(item.install_path || item.archive_path))}
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="retro-btn retro-btn-green" onclick="app.addSingleDiscovered(${idx})">Import</button>
+          <button class="retro-btn" onclick="app.reviewDiscovered(${idx})">Review</button>
+          <button class="retro-btn" onclick="app.ignoreDiscovered(${idx})">Ignore</button>
+        </div>
+      </div>
+    `;
+  }
+
+  renderAppCard(app) {
+    const statusDot = app.status_color === 'red' ? '⚠ FAIL' : '● OK';
+
+    return `
+      <div class="retro-panel" id="app-card-${app.id}">
+        <div class="retro-panel-title">${this.escapeHtml(app.display_name).toUpperCase()}</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span style="font-weight:bold; color:var(--c-terminal-green-bright);">${this.escapeHtml(app.display_name)}</span>
+          <span style="color:${app.status_color === 'red' ? 'var(--c-danger-red)' : 'var(--c-terminal-green)'}; font-size:11px;">${statusDot}</span>
+        </div>
+        <div style="color:var(--text-muted); font-size:11px; margin-bottom:6px;">
+          v${this.escapeHtml(app.version || '1.0.0')} | ${app.size_formatted}
+        </div>
+        <div class="terminal-box" style="margin-bottom:8px; font-size:11px; max-height:60px;">
+          BIN: ${this.escapeHtml(this.shortenPath(app.executable_path))}<br>
+          DIR: ${this.escapeHtml(this.shortenPath(app.install_path))}
+        </div>
+        <div style="display:flex; gap:4px; flex-wrap:wrap;">
+          <button class="retro-btn retro-btn-green" onclick="app.launchApp(${app.id})">Launch</button>
+          <button class="retro-btn" onclick="app.openFolder(${app.id})">Folder</button>
+          <button class="retro-btn" onclick="app.openUpdateModal(${app.id})">Update</button>
+          <button class="retro-btn" onclick="app.openDetailsModal(${app.id})">Config</button>
+          <button class="retro-btn retro-btn-danger" onclick="app.openUninstallModal(${app.id})">Remove</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // =========================================================================
+  // Discovered Actions
+  // =========================================================================
+  async addSingleDiscovered(index) {
+    const item = this.discoveredApps[index];
+    if (!item) return;
+
+    this.toast(`Importing ${item.display_name}...`, 'info');
+    try {
+      const res = await fetch('/api/discovered/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        this.toast(`Imported ${data.app.display_name}!`, 'success');
+        await this.refreshApps();
+        await this.fetchDiscovered();
+      } else {
+        this.toast(data.error || 'Import failed', 'error');
+      }
+    } catch (e) {
+      this.toast('Error importing application: ' + e.message, 'error');
+    }
+  }
+
+  async addAllDiscovered() {
+    const available = this.getActiveDiscovered();
+    if (available.length === 0) return;
+
+    this.toast(`Importing ${available.length} applications...`, 'info');
+    let added = 0;
+    for (const item of available) {
+      try {
+        const res = await fetch('/api/discovered/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item)
+        });
+        if (res.ok) added++;
+      } catch (e) {}
+    }
+
+    this.toast(`Successfully imported ${added} applications!`, 'success');
+    await this.refreshApps();
+    await this.fetchDiscovered();
+    this.setTab('all');
   }
 
   async ignoreDiscovered(index) {
@@ -300,94 +542,6 @@ class TarGzApp {
     }
   }
 
-  async unignoreDiscovered(index) {
-    const item = this.discoveredApps[index];
-    if (!item) return;
-    try {
-      const res = await fetch('/api/discovered/unignore', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: item.ignore_key })
-      });
-      if (res.ok) {
-        item.ignored = false;
-        this.renderDiscoveredBanner();
-        this.updateIgnoredCount();
-        this.renderApps();
-        this.toast('Restored to Discovered', 'success');
-      }
-    } catch (e) {
-      this.toast('Error restoring item: ' + e.message, 'error');
-    }
-  }
-
-  async toggleIgnoreApp(appId, ignore) {
-    try {
-      const res = await fetch(`/api/apps/${appId}/edit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ignored: ignore })
-      });
-      if (res.ok) {
-        this.toast(ignore ? 'App moved to Ignored' : 'App restored', ignore ? 'info' : 'success');
-        await this.refreshApps();
-      }
-    } catch (e) {
-      this.toast('Error updating app: ' + e.message, 'error');
-    }
-  }
-
-  async addSingleDiscovered(index) {
-    const item = this.discoveredApps[index];
-    if (!item) return;
-
-    this.toast(`Adding ${item.display_name} to manager...`, 'info');
-    try {
-      const res = await fetch('/api/discovered/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(item)
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        this.toast(`${data.app.display_name} added to managed apps!`, 'success');
-        await this.refreshApps();
-        await this.refreshStats();
-        await this.fetchDiscovered();
-      } else {
-        this.toast(data.error || 'Failed to add application', 'error');
-      }
-    } catch (e) {
-      this.toast('Error adding application: ' + e.message, 'error');
-    }
-  }
-
-  async addAllDiscovered() {
-    const available = this.getActiveDiscovered();
-    if (available.length === 0) return;
-
-    this.toast(`Adding all ${available.length} applications...`, 'info');
-    let added = 0;
-    for (let i = 0; i < this.discoveredApps.length; i++) {
-      if (this.discoveredApps[i].ignored) continue;
-      const item = this.discoveredApps[i];
-      try {
-        const res = await fetch('/api/discovered/add', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(item)
-        });
-        if (res.ok) added++;
-      } catch (e) {}
-    }
-
-    this.toast(`Successfully added ${added} applications!`, 'success');
-    await this.refreshApps();
-    await this.refreshStats();
-    await this.fetchDiscovered();
-    this.setTab('all');
-  }
-
   reviewDiscovered(index) {
     const item = this.discoveredApps[index];
     if (!item) return;
@@ -407,315 +561,6 @@ class TarGzApp {
       document.getElementById('regIconPath').value = item.icon_path || '';
       this.onRegisterDirChanged();
     }
-  }
-
-  // =========================================================================
-  // Navigation & Search Handling
-  // =========================================================================
-  setTab(tab) {
-    this.currentTab = tab;
-
-    const taskApps = document.getElementById('taskTabApps');
-    const taskCleaner = document.getElementById('taskTabCleaner');
-    const taskDisc = document.getElementById('taskTabDiscovered');
-    const taskAI = document.getElementById('taskTabAI');
-    const taskDotfiles = document.getElementById('taskTabDotfiles');
-
-    const tabAll = document.getElementById('tabAllApps');
-    const tabIgnored = document.getElementById('tabIgnored');
-    const controlsBar = document.getElementById('controlsBar');
-    const appsGrid = document.getElementById('appsGrid');
-    const emptyState = document.getElementById('emptyState');
-    const cleanerView = document.getElementById('cleanerView');
-    const aiView = document.getElementById('aiView');
-    const dotfilesView = document.getElementById('dotfilesView');
-
-    if (taskApps) taskApps.classList.toggle('active', tab === 'all' || tab === 'ignored');
-    if (taskCleaner) taskCleaner.classList.toggle('active', tab === 'cleaner');
-    if (taskDisc) taskDisc.classList.toggle('active', tab === 'discovered');
-    if (taskAI) taskAI.classList.toggle('active', tab === 'ai');
-    if (taskDotfiles) taskDotfiles.classList.toggle('active', tab === 'dotfiles');
-
-    if (tabAll) tabAll.classList.toggle('active', tab === 'all');
-    if (tabIgnored) tabIgnored.classList.toggle('active', tab === 'ignored');
-
-    if (tab === 'cleaner') {
-      if (appsGrid) appsGrid.style.display = 'none';
-      if (emptyState) emptyState.style.display = 'none';
-      if (controlsBar) controlsBar.style.display = 'none';
-      if (aiView) aiView.style.display = 'none';
-      if (dotfilesView) dotfilesView.style.display = 'none';
-      if (cleanerView) cleanerView.style.display = 'flex';
-      this.scanCleaner(false);
-    } else if (tab === 'ai') {
-      if (appsGrid) appsGrid.style.display = 'none';
-      if (emptyState) emptyState.style.display = 'none';
-      if (controlsBar) controlsBar.style.display = 'none';
-      if (cleanerView) cleanerView.style.display = 'none';
-      if (dotfilesView) dotfilesView.style.display = 'none';
-      if (aiView) aiView.style.display = 'flex';
-      this.loadAIData();
-    } else if (tab === 'dotfiles') {
-      if (appsGrid) appsGrid.style.display = 'none';
-      if (emptyState) emptyState.style.display = 'none';
-      if (controlsBar) controlsBar.style.display = 'none';
-      if (cleanerView) cleanerView.style.display = 'none';
-      if (aiView) aiView.style.display = 'none';
-      if (dotfilesView) dotfilesView.style.display = 'flex';
-      this.fetchDotfilesStatus();
-    } else {
-      if (cleanerView) cleanerView.style.display = 'none';
-      if (aiView) aiView.style.display = 'none';
-      if (dotfilesView) dotfilesView.style.display = 'none';
-      if (controlsBar) controlsBar.style.display = 'flex';
-      if (appsGrid) appsGrid.style.display = 'grid';
-      if (tab === 'discovered' && this.discoveredApps.length === 0) {
-        this.fetchDiscovered();
-      }
-      this.renderApps();
-    }
-  }
-
-  setSort(sortVal) {
-    this.currentSort = sortVal;
-    this.refreshApps();
-  }
-
-  getFilteredApps() {
-    if (this.currentTab === 'discovered') {
-      return this.getActiveDiscovered();
-    }
-
-    if (this.currentTab === 'ignored') {
-      return [
-        ...this.apps.filter(a => a.ignored),
-        ...this.discoveredApps.filter(d => d.ignored)
-      ];
-    }
-
-    let filtered = this.apps.filter(a => !a.ignored);
-    if (this.searchQuery) {
-      const q = this.searchQuery.toLowerCase();
-      filtered = filtered.filter(a =>
-        a.name.toLowerCase().includes(q) ||
-        (a.display_name && a.display_name.toLowerCase().includes(q)) ||
-        (a.description && a.description.toLowerCase().includes(q))
-      );
-    }
-    return filtered;
-  }
-
-  // =========================================================================
-  // Render Applications Grid
-  // =========================================================================
-  renderApps() {
-    const grid = document.getElementById('appsGrid');
-    const emptyState = document.getElementById('emptyState');
-    const list = this.getFilteredApps();
-
-    if (!list || list.length === 0) {
-      grid.innerHTML = '';
-      emptyState.style.display = 'block';
-      const title = document.getElementById('emptyStateTitle');
-      const desc = document.getElementById('emptyStateDesc');
-      const actions = document.getElementById('emptyStateActions');
-      if (this.currentTab === 'ignored') {
-        if (title) title.innerText = 'Nothing Ignored';
-        if (desc) desc.innerText = 'Apps and discovered suggestions you ignore will show up here, and you can restore them anytime.';
-        if (actions) actions.style.display = 'none';
-      } else {
-        if (title) title.innerText = 'No Applications Managed Yet';
-        if (desc) desc.innerHTML = 'Install a <code>.tar.gz</code> / <code>.tar.xz</code> binary archive or register apps you already extracted by hand to organize them, generate desktop shortcuts, and manage clean upgrades & removals.';
-        if (actions) actions.style.display = 'flex';
-      }
-      return;
-    }
-
-    emptyState.style.display = 'none';
-
-    if (this.currentTab === 'discovered') {
-      grid.innerHTML = this.discoveredApps.map((item, idx) => {
-        return item.ignored ? '' : this.renderDiscoveredCard(item, idx);
-      }).join('');
-    } else if (this.currentTab === 'ignored') {
-      const ignoredAppsHtml = this.apps.filter(a => a.ignored).map(app => this.renderAppCard(app)).join('');
-      const ignoredDiscoveredHtml = this.discoveredApps.map((item, idx) => {
-        return item.ignored ? this.renderDiscoveredCard(item, idx) : '';
-      }).join('');
-      grid.innerHTML = ignoredAppsHtml + ignoredDiscoveredHtml;
-    } else {
-      grid.innerHTML = list.map(app => this.renderAppCard(app)).join('');
-    }
-  }
-
-  renderDiscoveredCard(item, idx) {
-    const iconUrl = item.icon_path
-      ? `/api/icons/view?path=${encodeURIComponent(item.icon_path)}`
-      : null;
-
-    const iconHtml = iconUrl
-      ? `<img class="app-icon-img" style="width:36px; height:36px; max-width:36px; max-height:36px; object-fit:contain; display:block;" src="${iconUrl}" onerror="this.onerror=null; this.parentElement.innerText='${this.getMonogram(item.display_name)}';" alt="${this.escapeHtml(item.display_name)}">`
-      : this.getMonogram(item.display_name);
-
-    const sudoBadge = item.needs_sudo
-      ? `<span class="badge badge-sudo" title="Root/Sudo permissions required to modify files in this directory"><svg class="icon" style="width:11px;height:11px;" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> /opt Root</span>`
-      : '';
-
-    return `
-      <div class="app-card discovered-card" id="discovered-card-${idx}">
-        <div>
-          <div class="app-card-header">
-            <div class="app-icon">
-              ${iconHtml}
-            </div>
-            <div class="app-title-area">
-              <div class="app-name-row">
-                <h4 class="app-name" title="${this.escapeHtml(item.display_name)}">${this.escapeHtml(item.display_name)}</h4>
-                <span class="badge badge-indigo" style="font-size:0.65rem;">Discovered</span>
-              </div>
-              <div class="app-meta-row">
-                <span class="badge badge-slate">${this.escapeHtml(item.version || '1.0.0')}</span>
-                <span class="badge badge-slate" style="font-size:0.7rem;">${item.size_formatted}</span>
-                ${sudoBadge}
-              </div>
-            </div>
-          </div>
-
-          <div class="app-description" title="${this.escapeHtml(item.description || item.discovery_reason || '')}">
-            <strong>${this.escapeHtml(item.discovery_reason || 'Unmanaged manual application')}</strong>
-            ${item.description ? `<br>${this.escapeHtml(item.description)}` : ''}
-          </div>
-
-          <div class="app-paths-info">
-            <div class="path-line" title="${this.escapeHtml(item.install_path || item.archive_path)}">
-              <span class="path-line-label">LOC:</span>
-              <span>${this.escapeHtml(this.shortenPath(item.install_path || item.archive_path))}</span>
-            </div>
-            ${item.executable_path ? `
-              <div class="path-line" title="${this.escapeHtml(item.executable_path)}">
-                <span class="path-line-label">BIN:</span>
-                <span>${this.escapeHtml(this.shortenPath(item.executable_path))}</span>
-              </div>
-            ` : ''}
-          </div>
-        </div>
-
-        <div class="app-actions">
-          <div class="actions-left">
-            <button class="btn btn-sm btn-success" onclick="app.addSingleDiscovered(${idx})" title="1-Click Add to Database">
-              <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-              ${item.is_tarball_archive ? 'Install Tarball' : 'Add to Manager'}
-            </button>
-          </div>
-          <div class="actions-right">
-            <button class="btn btn-sm btn-secondary" onclick="app.reviewDiscovered(${idx})" title="Review and customize">
-              <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              Review
-            </button>
-            ${item.ignored
-              ? `<button class="btn btn-sm btn-secondary" onclick="app.unignoreDiscovered(${idx})" title="Move back to Discovered">Unignore</button>`
-              : `<button class="btn btn-sm btn-icon" onclick="app.ignoreDiscovered(${idx})" title="Ignore this suggestion">✕</button>`
-            }
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  renderAppCard(app) {
-    const iconHtml = app.icon_path && app.icon_exists
-      ? `<img class="app-icon-img" style="width:36px; height:36px; max-width:36px; max-height:36px; object-fit:contain; display:block;" src="${encodeURI('/api/apps/' + app.id + '/icon?t=' + Date.now())}" onerror="this.onerror=null; this.parentElement.innerText='${this.getMonogram(app.display_name)}';" alt="${this.escapeHtml(app.display_name)}">`
-      : this.getMonogram(app.display_name);
-
-    const statusDotClass = app.status_color || 'green';
-    const statusTip = app.status_message || 'Operational';
-
-    const sudoBadge = app.needs_sudo
-      ? `<span class="badge badge-sudo" title="Installed in root-protected directory (${this.shortenPath(app.install_path)}). Sudo / PolicyKit password required to update or delete."><svg class="icon" style="width:11px;height:11px;" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Sudo Required</span>`
-      : '';
-
-    return `
-      <div class="app-card" id="app-card-${app.id}">
-        <div>
-          <div class="app-card-header">
-            <div class="app-icon">
-              ${iconHtml}
-            </div>
-            <div class="app-title-area">
-              <div class="app-name-row">
-                <h4 class="app-name" title="${this.escapeHtml(app.display_name)}">${this.escapeHtml(app.display_name)}</h4>
-                <div class="status-dot ${statusDotClass}" title="${this.escapeHtml(statusTip)}"></div>
-              </div>
-              <div class="app-meta-row">
-                <span class="badge badge-slate">v${this.escapeHtml(app.version || '1.0.0')}</span>
-                <span class="badge badge-slate" style="font-size:0.7rem;">${app.size_formatted}</span>
-                ${sudoBadge}
-              </div>
-            </div>
-          </div>
-
-          <div class="app-description" title="${this.escapeHtml(app.description || '')}">
-            ${this.escapeHtml(app.description || 'Portable application managed with Clinux.')}
-          </div>
-
-          <div class="app-paths-info">
-            <div class="path-line" title="${this.escapeHtml(app.install_path)}">
-              <span class="path-line-label">DIR:</span>
-              <span>${this.escapeHtml(this.shortenPath(app.install_path))}</span>
-            </div>
-            <div class="path-line" title="${this.escapeHtml(app.executable_path)}">
-              <span class="path-line-label">BIN:</span>
-              <span>${this.escapeHtml(this.shortenPath(app.executable_path))}</span>
-            </div>
-          </div>
-
-          <div class="app-tags">
-            ${app.desktop_entry_path && app.desktop_exists ? `
-              <span class="badge badge-emerald" title="Desktop launcher active">
-                <svg class="icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
-                Desktop Shortcut
-              </span>
-            ` : ''}
-            ${app.symlink_path && app.symlink_exists ? `
-              <span class="badge badge-emerald" title="Terminal symlink in PATH active">
-                <svg class="icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-                $PATH: ${this.escapeHtml(app.name)}
-              </span>
-            ` : ''}
-            ${app.source_type === 'registered' ? `
-              <span class="badge badge-slate" title="Pre-existing registered app">Registered</span>
-            ` : ''}
-          </div>
-        </div>
-
-        <div class="app-actions">
-          <div class="actions-left">
-            <button class="btn btn-sm btn-primary" onclick="app.launchApp(${app.id})" title="Launch Application">
-              <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              Launch
-            </button>
-            <button class="btn btn-sm btn-secondary" onclick="app.openFolder(${app.id})" title="Open Directory in File Manager">
-              <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-              Folder
-            </button>
-          </div>
-          <div class="actions-right">
-            <button class="btn btn-sm btn-secondary" onclick="app.openUpdateModal(${app.id})" title="Update with new tarball">
-              <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
-            </button>
-            <button class="btn btn-sm btn-secondary" onclick="app.openDetailsModal(${app.id})" title="Configure & Edit">
-              <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            </button>
-            <button class="btn btn-sm btn-secondary" onclick="app.toggleIgnoreApp(${app.id}, ${app.ignored ? 'false' : 'true'})" title="${app.ignored ? 'Restore from Ignored' : 'Ignore this app'}">
-              <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
-            </button>
-            <button class="btn btn-sm btn-outline-danger" onclick="app.openUninstallModal(${app.id})" title="Uninstall Application">
-              <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
   }
 
   // =========================================================================
@@ -750,14 +595,9 @@ class TarGzApp {
   }
 
   // =========================================================================
-  // Install Tarball Wizard
+  // Install & Register Modals
   // =========================================================================
   openInstallWizard() {
-    this.currentInstallStep = 1;
-    this.activeInspection = null;
-    this.selectedExecRelPath = null;
-    this.selectedIconRelPath = null;
-
     document.getElementById('installArchivePath').value = '';
     document.getElementById('inspectionPreviewBox').style.display = 'none';
     document.getElementById('installDisplayName').value = '';
@@ -765,117 +605,8 @@ class TarGzApp {
     document.getElementById('installVersion').value = '';
     document.getElementById('installDestinationPath').value = '';
     document.getElementById('installDescription').value = '';
-    document.getElementById('installNotes').value = '';
-    document.getElementById('installExecCustomPath').value = '';
-    document.getElementById('installIconCustomPath').value = '';
-    document.getElementById('installCreateDesktop').checked = true;
-    document.getElementById('installCreateSymlink').checked = true;
-    document.getElementById('installFlattenWrapper').checked = true;
-    document.getElementById('installTerminal').checked = false;
 
-    this.showInstallStep(1);
     this.openModal('installModal');
-  }
-
-  showInstallStep(stepNum) {
-    this.currentInstallStep = stepNum;
-    for (let i = 1; i <= 4; i++) {
-      const content = document.getElementById(`installStep${i}`);
-      const indicator = document.getElementById(`stepIndicator${i}`);
-      if (content) content.style.display = i === stepNum ? 'block' : 'none';
-      if (indicator) {
-        indicator.classList.toggle('active', i === stepNum);
-        indicator.classList.toggle('completed', i < stepNum);
-      }
-    }
-
-    const prevBtn = document.getElementById('wizardPrevBtn');
-    const nextBtn = document.getElementById('wizardNextBtn');
-    const submitBtn = document.getElementById('wizardSubmitBtn');
-
-    if (prevBtn) prevBtn.style.display = stepNum > 1 ? 'inline-flex' : 'none';
-    if (nextBtn) {
-      nextBtn.style.display = stepNum < 4 ? 'inline-flex' : 'none';
-      if (stepNum === 1) nextBtn.innerText = 'Next: App Details';
-      else if (stepNum === 2) nextBtn.innerText = 'Next: Executable & Icon';
-      else if (stepNum === 3) nextBtn.innerText = 'Next: Shortcuts';
-    }
-    if (submitBtn) submitBtn.style.display = stepNum === 4 ? 'inline-flex' : 'none';
-  }
-
-  async nextInstallStep() {
-    if (this.currentInstallStep === 1) {
-      const archivePath = document.getElementById('installArchivePath').value.trim();
-      if (!archivePath) {
-        this.toast('Please select or upload a tarball archive file first', 'error');
-        return;
-      }
-      if (!this.activeInspection) {
-        await this.inspectArchive(archivePath);
-        if (!this.activeInspection) return;
-      }
-      this.populateStep2FromInspection();
-      this.showInstallStep(2);
-    } else if (this.currentInstallStep === 2) {
-      const slug = document.getElementById('installSlugName').value.trim();
-      const dest = document.getElementById('installDestinationPath').value.trim();
-      if (!slug) {
-        this.toast('Please provide an app slug identifier', 'error');
-        return;
-      }
-      if (!dest) {
-        this.toast('Please provide an installation destination path', 'error');
-        return;
-      }
-      this.populateStep3Candidates();
-      this.showInstallStep(3);
-    } else if (this.currentInstallStep === 3) {
-      const customExec = document.getElementById('installExecCustomPath').value.trim();
-      if (!this.selectedExecRelPath && !customExec) {
-        this.toast('Please select or enter the main executable binary', 'error');
-        return;
-      }
-      this.showInstallStep(4);
-    }
-  }
-
-  prevInstallStep() {
-    if (this.currentInstallStep > 1) {
-      this.showInstallStep(this.currentInstallStep - 1);
-    }
-  }
-
-  async handleFileSelect(event) {
-    const file = event.target.files[0];
-    if (file) {
-      await this.uploadFile(file);
-    }
-  }
-
-  async uploadFile(file) {
-    this.toast(`Uploading ${file.name}...`, 'info');
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        document.getElementById('installArchivePath').value = data.saved_path;
-        if (data.inspection) {
-          this.activeInspection = data.inspection;
-          this.renderInspectionPreview(data.inspection);
-        }
-        this.toast(`Loaded ${file.name}`, 'success');
-      } else {
-        this.toast(data.error || 'Upload failed', 'error');
-      }
-    } catch (e) {
-      this.toast('Error uploading archive file', 'error');
-    }
   }
 
   async inspectArchive(archivePath) {
@@ -887,100 +618,25 @@ class TarGzApp {
       });
       const data = await res.json();
       if (res.ok) {
-        this.activeInspection = data;
-        this.renderInspectionPreview(data);
-      } else {
-        this.toast(data.error || 'Failed to inspect archive', 'error');
+        const box = document.getElementById('inspectionPreviewBox');
+        if (box) box.style.display = 'block';
+        document.getElementById('inspectArchiveSize').innerText = this.formatBytes(data.archive_size_bytes);
+        document.getElementById('inspectFilesCount').innerText = `${data.total_files} files`;
+        document.getElementById('inspectWrapper').innerText = data.has_wrapper_folder ? 'Yes' : 'None';
+        document.getElementById('inspectExecCount').innerText = `${data.executables.length} detected`;
+
+        if (!document.getElementById('installSlugName').value) document.getElementById('installSlugName').value = data.guessed_name;
+        if (!document.getElementById('installDisplayName').value) document.getElementById('installDisplayName').value = data.guessed_display_name;
+        if (!document.getElementById('installVersion').value) document.getElementById('installVersion').value = data.guessed_version;
+        if (!document.getElementById('installDestinationPath').value) document.getElementById('installDestinationPath').value = data.default_install_path;
       }
     } catch (e) {
-      this.toast('Error inspecting archive file', 'error');
+      this.toast('Error inspecting archive', 'error');
     }
-  }
-
-  renderInspectionPreview(info) {
-    const box = document.getElementById('inspectionPreviewBox');
-    box.style.display = 'block';
-    document.getElementById('inspectArchiveSize').innerText = this.formatBytes(info.archive_size_bytes);
-    document.getElementById('inspectFilesCount').innerText = `${info.total_files} files (${this.formatBytes(info.uncompressed_size_bytes)})`;
-    document.getElementById('inspectWrapper').innerText = info.has_wrapper_folder ? `Yes (${info.wrapper_folder})` : 'None (flat archive)';
-    document.getElementById('inspectExecCount').innerText = `${info.executables.length} detected`;
   }
 
   onArchiveSelectedFromBrowser(path) {
     app.inspectArchive(path);
-  }
-
-  populateStep2FromInspection() {
-    if (!this.activeInspection) return;
-    const info = this.activeInspection;
-    if (!document.getElementById('installSlugName').value) {
-      document.getElementById('installSlugName').value = info.guessed_name;
-    }
-    if (!document.getElementById('installDisplayName').value) {
-      document.getElementById('installDisplayName').value = info.guessed_display_name;
-    }
-    if (!document.getElementById('installVersion').value) {
-      document.getElementById('installVersion').value = info.guessed_version;
-    }
-    if (!document.getElementById('installDestinationPath').value) {
-      document.getElementById('installDestinationPath').value = info.default_install_path;
-    }
-  }
-
-  populateStep3Candidates() {
-    if (!this.activeInspection) return;
-    const execContainer = document.getElementById('executableCandidateList');
-    const iconContainer = document.getElementById('iconCandidateList');
-
-    const execs = this.activeInspection.executables || [];
-    if (execs.length === 0) {
-      execContainer.innerHTML = `<div style="font-size:0.775rem; color:var(--text-muted); padding:0.4rem;">No obvious binaries auto-detected. Specify path below:</div>`;
-    } else {
-      execContainer.innerHTML = execs.map((ex, idx) => `
-        <div class="candidate-item ${idx === 0 ? 'selected' : ''}" onclick="app.selectExecCandidate('${this.escapeHtml(ex.path)}', this)">
-          <div style="display:flex; align-items:center; gap:0.5rem; overflow:hidden;">
-            <svg class="icon" style="width:14px;height:14px; color:var(--accent-primary);" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-            <span style="font-weight:600; font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.escapeHtml(ex.path)}</span>
-          </div>
-          <span class="badge ${ex.is_exec_bit ? 'badge-emerald' : 'badge-slate'}" style="font-size:0.7rem;">${this.formatBytes(ex.size)}</span>
-        </div>
-      `).join('');
-      if (execs.length > 0 && !this.selectedExecRelPath) {
-        this.selectedExecRelPath = execs[0].path;
-      }
-    }
-
-    const icons = this.activeInspection.icons || [];
-    if (icons.length === 0) {
-      iconContainer.innerHTML = `<div style="font-size:0.775rem; color:var(--text-muted); padding:0.4rem;">No icons auto-detected. You can select one below:</div>`;
-    } else {
-      iconContainer.innerHTML = icons.map((ic, idx) => `
-        <div class="candidate-item ${idx === 0 ? 'selected' : ''}" onclick="app.selectIconCandidate('${this.escapeHtml(ic.path)}', this)">
-          <div style="display:flex; align-items:center; gap:0.5rem; overflow:hidden;">
-            <svg class="icon" style="width:14px;height:14px; color:var(--accent-secondary);" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-            <span style="font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.escapeHtml(ic.path)}</span>
-          </div>
-          <span class="badge badge-slate" style="font-size:0.7rem;">${this.formatBytes(ic.size)}</span>
-        </div>
-      `).join('');
-      if (icons.length > 0 && !this.selectedIconRelPath) {
-        this.selectedIconRelPath = icons[0].path;
-      }
-    }
-  }
-
-  selectExecCandidate(path, elem) {
-    this.selectedExecRelPath = path;
-    document.getElementById('installExecCustomPath').value = '';
-    document.querySelectorAll('#executableCandidateList .candidate-item').forEach(el => el.classList.remove('selected'));
-    elem.classList.add('selected');
-  }
-
-  selectIconCandidate(path, elem) {
-    this.selectedIconRelPath = path;
-    document.getElementById('installIconCustomPath').value = '';
-    document.querySelectorAll('#iconCandidateList .candidate-item').forEach(el => el.classList.remove('selected'));
-    elem.classList.add('selected');
   }
 
   async submitInstall() {
@@ -992,18 +648,11 @@ class TarGzApp {
       description: document.getElementById('installDescription').value.trim(),
       category: 'Utility',
       install_path: document.getElementById('installDestinationPath').value.trim(),
-      executable_rel_path: document.getElementById('installExecCustomPath').value.trim() || this.selectedExecRelPath,
-      icon_rel_path: document.getElementById('installIconCustomPath').value.trim() || this.selectedIconRelPath,
       create_desktop: document.getElementById('installCreateDesktop').checked,
       create_bin_symlink: document.getElementById('installCreateSymlink').checked,
       flatten_wrapper: document.getElementById('installFlattenWrapper').checked,
-      terminal: document.getElementById('installTerminal').checked,
-      notes: document.getElementById('installNotes').value.trim()
+      terminal: document.getElementById('installTerminal').checked
     };
-
-    const submitBtn = document.getElementById('wizardSubmitBtn');
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = `<div class="spinner"></div> Installing...`;
 
     try {
       const res = await fetch('/api/apps/install', {
@@ -1016,22 +665,14 @@ class TarGzApp {
         this.toast(`${data.app.display_name} installed successfully!`, 'success');
         this.closeModal('installModal');
         await this.refreshApps();
-        await this.refreshStats();
-        await this.fetchDiscovered();
       } else {
         this.toast(data.error || 'Installation failed', 'error');
       }
     } catch (e) {
-      this.toast('Error during installation: ' + e.message, 'error');
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = `<svg class="icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Complete Installation`;
+      this.toast('Error during installation', 'error');
     }
   }
 
-  // =========================================================================
-  // Register Existing Application with Auto-Detection
-  // =========================================================================
   openRegisterModal() {
     document.getElementById('regInstallPath').value = '';
     document.getElementById('regExecutablePath').value = '';
@@ -1040,17 +681,12 @@ class TarGzApp {
     document.getElementById('regVersion').value = '1.0.0';
     document.getElementById('regDescription').value = '';
     document.getElementById('regIconPath').value = '';
-    document.getElementById('regCreateDesktop').checked = true;
-    document.getElementById('regCreateSymlink').checked = true;
-    document.getElementById('regExecutableCandidateList').innerHTML = '';
     this.openModal('registerModal');
   }
 
   async onRegisterDirChanged() {
     const dirPath = document.getElementById('regInstallPath').value.trim();
     if (!dirPath) return;
-
-    this.toast('Auto-detecting binary, icon, and metadata...', 'info');
 
     try {
       const res = await fetch('/api/apps/auto-resolve', {
@@ -1060,38 +696,14 @@ class TarGzApp {
       });
       const data = await res.json();
       if (res.ok && !data.error) {
-        if (data.display_name && !document.getElementById('regDisplayName').value) {
-          document.getElementById('regDisplayName').value = data.display_name;
-        }
-        if (data.name && !document.getElementById('regName').value) {
-          document.getElementById('regName').value = data.name;
-        }
-        if (data.version && document.getElementById('regVersion').value === '1.0.0') {
-          document.getElementById('regVersion').value = data.version;
-        }
-        if (data.executable_path) {
-          document.getElementById('regExecutablePath').value = data.executable_path;
-        }
-        if (data.icon_path) {
-          document.getElementById('regIconPath').value = data.icon_path;
-        }
-
-        // Populate candidates dropdown list
-        if (data.executables && data.executables.length > 0) {
-          const list = document.getElementById('regExecutableCandidateList');
-          list.innerHTML = data.executables.map((ex, idx) => `
-            <div class="candidate-item ${idx === 0 ? 'selected' : ''}" onclick="document.getElementById('regExecutablePath').value='${this.escapeHtml(ex.full_path)}';">
-              <span style="font-size:0.775rem; font-weight:600;">${this.escapeHtml(ex.path)}</span>
-              <span class="badge ${ex.is_elf ? 'badge-emerald' : 'badge-slate'}" style="font-size:0.65rem;">${ex.is_elf ? 'ELF Binary' : 'Script'}</span>
-            </div>
-          `).join('');
-        }
-
-        this.toast(`Auto-detected ${data.display_name}!`, 'success');
+        if (data.display_name) document.getElementById('regDisplayName').value = data.display_name;
+        if (data.name) document.getElementById('regName').value = data.name;
+        if (data.version) document.getElementById('regVersion').value = data.version;
+        if (data.executable_path) document.getElementById('regExecutablePath').value = data.executable_path;
+        if (data.icon_path) document.getElementById('regIconPath').value = data.icon_path;
+        this.toast(`Auto-detected ${data.display_name}`, 'success');
       }
-    } catch (e) {
-      console.error('Auto-resolve error:', e);
-    }
+    } catch (e) {}
   }
 
   async submitRegister() {
@@ -1108,11 +720,6 @@ class TarGzApp {
       create_bin_symlink: document.getElementById('regCreateSymlink').checked
     };
 
-    if (!payload.install_path || !payload.executable_path || !payload.name) {
-      this.toast('Please fill in install folder, executable path, and app name', 'error');
-      return;
-    }
-
     try {
       const res = await fetch('/api/apps/register', {
         method: 'POST',
@@ -1124,8 +731,6 @@ class TarGzApp {
         this.toast(`${data.app.display_name} registered successfully!`, 'success');
         this.closeModal('registerModal');
         await this.refreshApps();
-        await this.refreshStats();
-        await this.fetchDiscovered();
       } else {
         this.toast(data.error || 'Registration failed', 'error');
       }
@@ -1135,7 +740,7 @@ class TarGzApp {
   }
 
   // =========================================================================
-  // Update App Flow
+  // Update & Uninstall
   // =========================================================================
   openUpdateModal(appId) {
     const app = this.apps.find(a => a.id === appId);
@@ -1144,16 +749,10 @@ class TarGzApp {
 
     document.getElementById('updateAppNameHeader').innerText = app.display_name;
     document.getElementById('updateCurrentName').innerText = app.display_name;
-    document.getElementById('updateCurrentVersion').innerText = `Current: v${app.version}`;
+    document.getElementById('updateCurrentVersion').innerText = `v${app.version}`;
     document.getElementById('updateCurrentPath').innerText = app.install_path;
     document.getElementById('updateArchivePath').value = '';
     document.getElementById('updateNewVersion').value = '';
-    document.getElementById('updateFlattenWrapper').checked = true;
-
-    const sudoNotice = document.getElementById('updateSudoNotice');
-    if (sudoNotice) {
-      sudoNotice.style.display = app.needs_sudo ? 'flex' : 'none';
-    }
 
     this.openModal('updateModal');
   }
@@ -1169,7 +768,7 @@ class TarGzApp {
     if (!this.activeApp) return;
     const archivePath = document.getElementById('updateArchivePath').value.trim();
     if (!archivePath) {
-      this.toast('Please specify the new tarball archive file', 'error');
+      this.toast('Please specify archive path', 'error');
       return;
     }
 
@@ -1187,21 +786,17 @@ class TarGzApp {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        this.toast(`${data.app.display_name} updated to v${data.app.version} successfully!`, 'success');
+        this.toast(`${data.app.display_name} updated successfully!`, 'success');
         this.closeModal('updateModal');
         await this.refreshApps();
-        await this.refreshStats();
       } else {
         this.toast(data.error || 'Update failed', 'error');
       }
     } catch (e) {
-      this.toast('Error during update: ' + e.message, 'error');
+      this.toast('Error during update', 'error');
     }
   }
 
-  // =========================================================================
-  // Uninstall App Flow
-  // =========================================================================
   openUninstallModal(appId) {
     const app = this.apps.find(a => a.id === appId);
     if (!app) return;
@@ -1212,15 +807,6 @@ class TarGzApp {
     document.getElementById('uninstPathStr').innerText = this.shortenPath(app.install_path);
     document.getElementById('uninstDesktopStr').innerText = app.desktop_entry_path ? this.shortenPath(app.desktop_entry_path) : 'None';
     document.getElementById('uninstSymlinkStr').innerText = app.symlink_path ? this.shortenPath(app.symlink_path) : 'None';
-
-    const sudoNotice = document.getElementById('uninstallSudoNotice');
-    if (sudoNotice) {
-      sudoNotice.style.display = app.needs_sudo ? 'flex' : 'none';
-    }
-
-    document.getElementById('uninstDeleteFiles').checked = true;
-    document.getElementById('uninstDeleteDesktop').checked = Boolean(app.desktop_entry_path);
-    document.getElementById('uninstDeleteSymlink').checked = Boolean(app.symlink_path);
 
     this.openModal('uninstallModal');
   }
@@ -1238,21 +824,19 @@ class TarGzApp {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        this.toast(`Uninstalled ${data.app_name} cleanly! Freed ${this.formatBytes(data.bytes_freed)}`, 'success');
+        this.toast(`Uninstalled ${data.app_name}!`, 'success');
         this.closeModal('uninstallModal');
         await this.refreshApps();
-        await this.refreshStats();
-        await this.fetchDiscovered();
       } else {
         this.toast(data.error || 'Uninstall failed', 'error');
       }
     } catch (e) {
-      this.toast('Error during uninstall: ' + e.message, 'error');
+      this.toast('Error during uninstall', 'error');
     }
   }
 
   // =========================================================================
-  // App Details & Configuration Modal
+  // Config Modal
   // =========================================================================
   openDetailsModal(appId) {
     const app = this.apps.find(a => a.id === appId);
@@ -1267,57 +851,7 @@ class TarGzApp {
     document.getElementById('editTerminal').checked = Boolean(app.terminal);
     document.getElementById('editNotes').value = app.notes || '';
 
-    this.renderShortcutToggles(app);
     this.openModal('detailsModal');
-  }
-
-  renderShortcutToggles(app) {
-    const desktopInfo = document.getElementById('editDesktopPathInfo');
-    const desktopBtn = document.getElementById('toggleDesktopBtn');
-    if (app.desktop_entry_path && app.desktop_exists) {
-      desktopInfo.innerText = this.shortenPath(app.desktop_entry_path);
-      desktopBtn.className = 'btn btn-sm btn-outline-danger';
-      desktopBtn.innerText = 'Remove Shortcut';
-    } else {
-      desktopInfo.innerText = 'Not created';
-      desktopBtn.className = 'btn btn-sm btn-primary';
-      desktopBtn.innerText = 'Create Shortcut';
-    }
-
-    const symlinkInfo = document.getElementById('editSymlinkPathInfo');
-    const symlinkBtn = document.getElementById('toggleSymlinkBtn');
-    if (app.symlink_path && app.symlink_exists) {
-      symlinkInfo.innerText = this.shortenPath(app.symlink_path);
-      symlinkBtn.className = 'btn btn-sm btn-outline-danger';
-      symlinkBtn.innerText = 'Remove Symlink';
-    } else {
-      symlinkInfo.innerText = 'Not created';
-      symlinkBtn.className = 'btn btn-sm btn-primary';
-      symlinkBtn.innerText = 'Create Symlink';
-    }
-  }
-
-  async toggleShortcut(type) {
-    if (!this.activeApp) return;
-    const isCurrentlyActive = type === 'desktop' ? Boolean(this.activeApp.desktop_entry_path && this.activeApp.desktop_exists) : Boolean(this.activeApp.symlink_path && this.activeApp.symlink_exists);
-
-    try {
-      const res = await fetch(`/api/apps/${this.activeApp.id}/toggle-shortcut`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, enable: !isCurrentlyActive })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        this.activeApp = data.app;
-        this.renderShortcutToggles(data.app);
-        this.toast(`Shortcut updated`, 'success');
-        await this.refreshApps();
-        await this.refreshStats();
-      }
-    } catch (e) {
-      this.toast('Error toggling shortcut', 'error');
-    }
   }
 
   async saveAppEdit() {
@@ -1349,251 +883,33 @@ class TarGzApp {
     }
   }
 
-  openAppFolderFromEdit() {
-    if (this.activeApp) {
-      this.openFolder(this.activeApp.id);
-    }
-  }
+  async toggleShortcut(type) {
+    if (!this.activeApp) return;
+    const isCurrentlyActive = type === 'desktop' ? Boolean(this.activeApp.desktop_entry_path) : Boolean(this.activeApp.symlink_path);
 
-  // =========================================================================
-  // Visual File Browser Modal
-  // =========================================================================
-  openFileBrowser(mode, targetInputId, callback = null) {
-    this.browserMode = mode || 'all';
-    this.browserTargetInputId = targetInputId;
-    this.browserOnSelectCallback = callback;
-    this.browserSelectedItem = null;
-    this.browserShowHidden = this.browserShowHidden !== undefined ? this.browserShowHidden : true;
-
-    const hiddenToggle = document.getElementById('browserShowHidden');
-    if (hiddenToggle) hiddenToggle.checked = this.browserShowHidden;
-
-    document.getElementById('browserSelectedPreview').innerText = 'No item selected';
-
-    let initialPath = '';
-    const currentInputVal = document.getElementById(targetInputId)?.value;
-    if (currentInputVal && currentInputVal.startsWith('/')) {
-      initialPath = currentInputVal;
-    }
-
-    this.navigateToPath(initialPath);
-    this.openModal('fileBrowserModal');
-  }
-
-  toggleBrowserHidden(checked) {
-    this.browserShowHidden = Boolean(checked);
-    this.navigateToPath(this.browserCurrentPath);
-  }
-
-  async navigateToPath(path) {
     try {
-      const showHiddenParam = (this.browserShowHidden !== false) ? '1' : '0';
-      const res = await fetch(`/api/browse?path=${encodeURIComponent(path || '')}&mode=${this.browserMode}&show_hidden=${showHiddenParam}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      this.browserCurrentPath = data.current_path;
-      this.renderBrowser(data);
-    } catch (e) {
-      this.toast('Error browsing files', 'error');
-    }
-  }
-
-  renderBrowser(data) {
-    // Breadcrumbs
-    const crumbsContainer = document.getElementById('browserBreadcrumbs');
-    const parts = data.current_path.split('/').filter(Boolean);
-    let cumulative = '';
-    let crumbHtml = `<button class="crumb-btn" onclick="app.navigateToPath('/')">/</button>`;
-
-    parts.forEach(part => {
-      cumulative += '/' + part;
-      const target = cumulative;
-      crumbHtml += `<span style="color:var(--text-muted);">/</span><button class="crumb-btn" onclick="app.navigateToPath('${this.escapeHtml(target)}')">${this.escapeHtml(part)}</button>`;
-    });
-    crumbsContainer.innerHTML = crumbHtml;
-
-    // Quick links
-    const qlContainer = document.getElementById('browserQuickLinks');
-    qlContainer.innerHTML = (data.quick_links || []).map(ql => `
-      <button class="btn btn-sm btn-secondary" onclick="app.navigateToPath('${this.escapeHtml(ql.path)}')">
-        ${this.escapeHtml(ql.name)}
-      </button>
-    `).join('');
-
-    // List
-    const listContainer = document.getElementById('browserItemsList');
-    let itemsHtml = '';
-
-    if (data.parent_path) {
-      itemsHtml += `
-        <div class="browser-row" onclick="app.navigateToPath('${this.escapeHtml(data.parent_path)}')">
-          <div class="browser-item-left">
-            <svg class="icon" style="color:var(--text-muted);" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
-            <span style="font-weight:600;">.. (Parent Folder)</span>
-          </div>
-        </div>
-      `;
-    }
-
-    if (!data.items || data.items.length === 0) {
-      itemsHtml += `<div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:0.8rem;">Directory is empty or contains no matching files</div>`;
-    } else {
-      data.items.forEach(item => {
-        const icon = item.is_dir
-          ? `<svg class="icon" style="color:var(--accent-secondary);" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`
-          : item.is_archive
-          ? `<svg class="icon" style="color:var(--accent-primary);" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`
-          : `<svg class="icon" style="color:var(--text-muted);" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/></svg>`;
-
-        itemsHtml += `
-          <div class="browser-row ${item.is_hidden ? 'is-hidden' : ''}" onclick="app.onBrowserItemClick('${this.escapeHtml(item.path)}', ${item.is_dir}, this)" ondblclick="app.onBrowserItemDblClick('${this.escapeHtml(item.path)}', ${item.is_dir})">
-            <div class="browser-item-left">
-              ${icon}
-              <span class="browser-item-name">${this.escapeHtml(item.name)}</span>
-            </div>
-            <span style="color:var(--text-muted); font-size:0.75rem;">${item.size_formatted || ''}</span>
-          </div>
-        `;
+      const res = await fetch(`/api/apps/${this.activeApp.id}/toggle-shortcut`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, enable: !isCurrentlyActive })
       });
-    }
-
-    listContainer.innerHTML = itemsHtml;
-  }
-
-  onBrowserItemClick(path, isDir, elem) {
-    this.browserSelectedItem = path;
-    document.querySelectorAll('.browser-row').forEach(r => r.classList.remove('selected'));
-    elem.classList.add('selected');
-    document.getElementById('browserSelectedPreview').innerText = `Selected: ${path}`;
-  }
-
-  onBrowserItemDblClick(path, isDir) {
-    if (isDir) {
-      this.navigateToPath(path);
-    } else {
-      this.confirmBrowserSelection(path);
-    }
-  }
-
-  confirmBrowserSelection(directPath = null) {
-    const selected = directPath || this.browserSelectedItem || (this.browserMode === 'dir' ? this.browserCurrentPath : null);
-    if (!selected) {
-      this.toast('Please choose a file or folder', 'error');
-      return;
-    }
-
-    if (this.browserTargetInputId) {
-      const input = document.getElementById(this.browserTargetInputId);
-      if (input) {
-        input.value = selected;
-        input.dispatchEvent(new Event('change'));
+      const data = await res.json();
+      if (res.ok && data.success) {
+        this.activeApp = data.app;
+        this.toast('Shortcut updated', 'success');
+        await this.refreshApps();
       }
+    } catch (e) {
+      this.toast('Error toggling shortcut', 'error');
     }
-
-    if (this.browserOnSelectCallback && typeof this.browserOnSelectCallback === 'function') {
-      this.browserOnSelectCallback(selected);
-    }
-
-    this.closeModal('fileBrowserModal');
   }
 
   // =========================================================================
-  // Modal Utilities
-  // =========================================================================
-  openModal(modalId) {
-    const el = document.getElementById(modalId);
-    if (el) el.classList.add('open');
-  }
-
-  closeModal(modalId) {
-    const el = document.getElementById(modalId);
-    if (el) el.classList.remove('open');
-  }
-
-  closeAllModals() {
-    document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('open'));
-  }
-
-  // =========================================================================
-  // Helper Functions & Notifications
-  // =========================================================================
-  toast(message, type = 'info') {
-    const container = document.getElementById('toastContainer');
-    if (!container) return;
-
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    
-    let icon = `<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
-    if (type === 'success') {
-      icon = `<svg class="icon" style="color:var(--accent-emerald);" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
-    } else if (type === 'error') {
-      icon = `<svg class="icon" style="color:var(--accent-rose);" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
-    }
-
-    toast.innerHTML = `
-      ${icon}
-      <div style="flex:1; font-size:0.85rem; font-weight:500;">${this.escapeHtml(message)}</div>
-    `;
-
-    container.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(10px)';
-      toast.style.transition = 'all 0.25s ease';
-      setTimeout(() => toast.remove(), 250);
-    }, 3500);
-  }
-
-  escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
-
-  getMonogram(name) {
-    if (!name) return 'A';
-    const words = name.trim().split(/\s+/);
-    if (words.length > 1) {
-      return (words[0][0] + words[1][0]).toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
-  }
-
-  shortenPath(path) {
-    if (!path) return '';
-    const home = this.systemInfo.home || '';
-    if (home && path.startsWith(home)) {
-      return '~' + path.slice(home.length);
-    }
-    return path;
-  }
-
-  formatBytes(bytes) {
-    if (!bytes || bytes <= 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let size = bytes;
-    let unitIdx = 0;
-    while (size >= 1024 && unitIdx < units.length - 1) {
-      size /= 1024;
-      unitIdx++;
-    }
-    return `${size.toFixed(1)} ${units[unitIdx]}`;
-  }
-
-  // =========================================================================
-  // Clean Master (Cache & Junk Cleaner)
+  // Clean Master Views
   // =========================================================================
   async scanCleaner(force = false) {
     const rescanBtn = document.getElementById('cleanerRescanBtn');
-    if (rescanBtn) {
-      rescanBtn.disabled = true;
-      rescanBtn.innerHTML = `<svg class="icon spin" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Scanning...`;
-    }
+    if (rescanBtn) rescanBtn.innerText = 'Scanning...';
 
     try {
       const res = await fetch('/api/cleaner/scan');
@@ -1604,15 +920,9 @@ class TarGzApp {
       const badge = document.getElementById('cleanerTotalBadge');
       if (badge) badge.textContent = data.total_size_formatted || '0 B';
 
-      const heroSize = document.getElementById('cleanerHeroSize');
-      if (heroSize) heroSize.textContent = data.total_size_formatted || '0 B';
-
       const heroDesc = document.getElementById('cleanerHeroDesc');
       if (heroDesc) {
-        const count = data.targets.length;
-        heroDesc.textContent = count > 0 
-          ? `Found ${data.total_size_formatted} reclaimable caches and junk files across ${count} location${count === 1 ? '' : 's'}.`
-          : 'All clean. No package manager or temporary caches found.';
+        heroDesc.textContent = `Found ${data.total_size_formatted} reclaimable junk across ${data.targets.length} targets.`;
       }
 
       if (this.selectedCleanerTargets.size === 0 || force) {
@@ -1627,34 +937,22 @@ class TarGzApp {
       this.renderCleaner();
       this.updateCleanerSelectionMetrics();
     } catch (e) {
-      console.error('Failed to scan caches:', e);
-      this.toast('Failed to scan caches: ' + e.message, 'error');
+      console.error('Scan error:', e);
     } finally {
-      if (rescanBtn) {
-        rescanBtn.disabled = false;
-        rescanBtn.innerHTML = `<svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg> Scan`;
-      }
+      if (rescanBtn) rescanBtn.innerText = '[ R ] RE-SCAN';
     }
   }
 
   updateCleanerSelectionMetrics() {
     if (!this.cleanerData || !this.cleanerData.targets) return;
-
     let selectedBytes = 0;
     for (const t of this.cleanerData.targets) {
       if (this.selectedCleanerTargets.has(t.id)) {
         selectedBytes += t.size_bytes || 0;
       }
     }
-
-    const sizeStr = this.formatBytes(selectedBytes);
     const sizeSpan = document.getElementById('cleanSelectedSizeStr');
-    if (sizeSpan) sizeSpan.textContent = sizeStr;
-
-    const cleanBtn = document.getElementById('cleanSelectedBtn');
-    if (cleanBtn) {
-      cleanBtn.disabled = this.selectedCleanerTargets.size === 0 || this.isCleaning;
-    }
+    if (sizeSpan) sizeSpan.textContent = this.formatBytes(selectedBytes);
   }
 
   toggleCleanerTarget(targetId) {
@@ -1668,15 +966,12 @@ class TarGzApp {
 
   toggleSelectAllCleaner() {
     if (!this.cleanerData || !this.cleanerData.targets) return;
-
     const allSelected = this.cleanerData.targets.every(t => this.selectedCleanerTargets.has(t.id));
     if (allSelected) {
       this.selectedCleanerTargets.clear();
     } else {
       for (const t of this.cleanerData.targets) {
-        if (t.safe_to_clean) {
-          this.selectedCleanerTargets.add(t.id);
-        }
+        if (t.safe_to_clean) this.selectedCleanerTargets.add(t.id);
       }
     }
     this.renderCleaner();
@@ -1689,138 +984,63 @@ class TarGzApp {
 
     if (!this.cleanerData || !this.cleanerData.targets || this.cleanerData.targets.length === 0) {
       container.innerHTML = `
-        <div class="empty-state" style="padding:3rem 1rem;">
-          <svg class="empty-icon" style="color:var(--accent-emerald);" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          <h3 class="empty-title">System is Clean</h3>
-          <p class="empty-desc">No package manager caches or junk files found on your system.</p>
+        <div class="terminal-box" style="padding:16px; text-align:center;">
+          <div style="color:var(--c-terminal-green-bright); font-size:14px; font-weight:bold;">NO CACHES FOUND</div>
+          <div style="color:var(--text-muted);">System is completely clean.</div>
         </div>
       `;
       return;
     }
 
-    const categories = [
-      { id: 'package_managers', title: 'Package Managers & AUR', icon: '<path d="m16.5 9.4-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>' },
-      { id: 'developer', title: 'Developer Tools & Runtimes', icon: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>' },
-      { id: 'system', title: 'Desktop & Temporary Junk', icon: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>' }
-    ];
+    const totalFormatted = this.cleanerData.total_size_formatted || '0 B';
 
-    let html = '';
-    for (const cat of categories) {
-      const items = this.cleanerData.targets.filter(t => t.category === cat.id);
-      if (items.length === 0) continue;
-
-      let catBytes = items.reduce((acc, t) => acc + (t.size_bytes || 0), 0);
-
-      html += `
-        <div class="cleaner-category-section">
-          <div class="cleaner-category-header">
-            <div class="cleaner-category-header-title">
-              <svg class="icon" viewBox="0 0 24 24" style="color:var(--accent-emerald); width:16px; height:16px;">
-                ${cat.icon}
-              </svg>
-              <span>${cat.title}</span>
-            </div>
-            <span class="badge badge-slate">${this.formatBytes(catBytes)}</span>
-          </div>
-          <div class="cleaner-category-items">
-      `;
-
-      for (const item of items) {
-        const isChecked = this.selectedCleanerTargets.has(item.id);
-        const rootBadge = item.needs_sudo 
-          ? `<span class="badge" style="background:rgba(245, 158, 11, 0.12); color:#fbbf24; border:1px solid rgba(245, 158, 11, 0.3);">Root / Sudo</span>`
-          : `<span class="badge" style="background:var(--accent-emerald-bg); color:var(--accent-emerald);">Safe to clean</span>`;
-
-        html += `
-          <div class="cleaner-target-item">
-            <div class="cleaner-target-info">
-              <input type="checkbox" class="cleaner-target-checkbox" id="check_${item.id}"
-                ${isChecked ? 'checked' : ''}
-                onchange="app.toggleCleanerTarget('${item.id}')"
-              >
-              <div class="cleaner-target-meta">
-                <div class="cleaner-target-title-row">
-                  <label for="check_${item.id}" class="cleaner-target-name" style="cursor:pointer;">${this.escapeHtml(item.name)}</label>
-                  ${rootBadge}
-                </div>
-                <div class="cleaner-target-path">${this.escapeHtml(item.path)}</div>
-                <div class="cleaner-target-desc">${this.escapeHtml(item.description)}</div>
-              </div>
-            </div>
-            <div class="cleaner-target-stats">
-              <div class="cleaner-target-numbers">
-                <div class="cleaner-size-badge">${item.size_formatted}</div>
-                <div class="cleaner-files-count">${item.file_count.toLocaleString()} files</div>
-              </div>
-              <button class="btn btn-sm btn-secondary" onclick="app.cleanSingleTarget('${item.id}')" title="Clean only this cache">
-                Clean
-              </button>
-            </div>
-          </div>
-        `;
-      }
-
-      html += `
+    container.innerHTML = `
+      <div class="retro-panel" style="margin-top:0;">
+        <div class="retro-panel-title">FOUND RECLAIMABLE CACHES</div>
+        <table class="retro-table">
+          <thead>
+            <tr>
+              <th style="width:24px;">[X]</th>
+              <th>CACHE NAME</th>
+              <th>CATEGORY</th>
+              <th>SIZE</th>
+              <th>FILES</th>
+              <th>LOCATION</th>
+              <th style="width:80px;">ACTION</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${this.cleanerData.targets.map(t => {
+              const checked = this.selectedCleanerTargets.has(t.id);
+              return `
+                <tr class="${checked ? 'selected' : ''}">
+                  <td><input type="checkbox" ${checked ? 'checked' : ''} onchange="app.toggleCleanerTarget('${t.id}')"></td>
+                  <td><strong style="color:var(--c-terminal-green-bright);">${this.escapeHtml(t.name)}</strong></td>
+                  <td>${this.escapeHtml(t.category)}</td>
+                  <td><strong style="color:var(--c-warning-yellow);">${t.size_formatted}</strong></td>
+                  <td>${t.file_count}</td>
+                  <td style="font-size:11px; color:var(--text-muted);">${this.escapeHtml(this.shortenPath(t.path))}</td>
+                  <td><button class="retro-btn" onclick="app.cleanSingleTarget('${t.id}')">Clean</button></td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+        <div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--c-shadow); display:flex; justify-content:space-between; align-items:center;">
+          <div><strong style="color:var(--c-warning-yellow);">TOTAL RECLAIMABLE: ${totalFormatted}</strong></div>
+          <div style="display:flex; gap:8px;">
+            <button class="retro-btn retro-btn-green" onclick="app.cleanSelectedCaches()">[ C ] CLEAN SELECTED</button>
+            <button class="retro-btn" onclick="app.scanCleaner(true)">[ V ] PREVIEW / RESCAN</button>
+            <button class="retro-btn" onclick="app.setTab('dashboard')">[ Q ] CANCEL</button>
           </div>
         </div>
-      `;
-    }
-
-    container.innerHTML = html;
-  }
-
-  showSudoCommandModal(sudoTargets, userFreedNotice = '') {
-    const desc = document.getElementById('sudoCommandDesc');
-    const codeEl = document.getElementById('sudoCommandCode');
-    const noticeEl = document.getElementById('sudoNonRootCleanNotice');
-
-    const names = sudoTargets.map(t => t.name || t.id).join(', ');
-    if (desc) {
-      desc.innerHTML = `Administrator privileges are required to clean <strong>${this.escapeHtml(names)}</strong>. Run this command in your terminal:`;
-    }
-
-    const commands = sudoTargets.map(t => t.sudo_command || `sudo rm -rf '${t.path || ''}'/*`);
-    const uniqueCommands = Array.from(new Set(commands.filter(Boolean)));
-    const commandText = uniqueCommands.join(' && ');
-
-    if (codeEl) {
-      codeEl.textContent = commandText;
-    }
-
-    if (noticeEl) {
-      if (userFreedNotice) {
-        noticeEl.style.display = 'block';
-        noticeEl.innerHTML = `✓ User-level caches cleaned successfully (freed ${this.escapeHtml(userFreedNotice)}).`;
-      } else {
-        noticeEl.style.display = 'none';
-        noticeEl.innerHTML = '';
-      }
-    }
-
-    this.openModal('sudoCommandModal');
-  }
-
-  copySudoCommand() {
-    const codeEl = document.getElementById('sudoCommandCode');
-    const text = codeEl ? codeEl.textContent : '';
-    if (text) {
-      navigator.clipboard.writeText(text).then(() => {
-        this.toast('Command copied to clipboard!', 'success');
-      }).catch(() => {
-        this.toast('Failed to copy. Please select and copy manually.', 'error');
-      });
-    }
-  }
-
-  async completeSudoCommandClean() {
-    this.closeModal('sudoCommandModal');
-    this.toast('Refreshing cache scan...', 'info');
-    await this.scanCleaner(true);
+      </div>
+    `;
   }
 
   async cleanSelectedCaches() {
     if (this.selectedCleanerTargets.size === 0) {
-      this.toast('No caches selected to clean.', 'info');
+      this.toast('No caches selected.', 'info');
       return;
     }
 
@@ -1831,13 +1051,6 @@ class TarGzApp {
 
     let userFreedStr = '';
     if (userTargets.length > 0) {
-      const btn = document.getElementById('cleanSelectedBtn');
-      this.isCleaning = true;
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = `<svg class="icon spin" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Cleaning...`;
-      }
-
       try {
         const res = await fetch('/api/cleaner/clean', {
           method: 'POST',
@@ -1848,28 +1061,14 @@ class TarGzApp {
           const data = await res.json();
           userFreedStr = data.freed_formatted || '0 B';
         }
-      } catch (e) {
-        console.error('Failed to clean user targets:', e);
-      } finally {
-        this.isCleaning = false;
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = `
-            <svg class="icon" viewBox="0 0 24 24"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 5l5 5"/><path d="m22 20-2 2-4-4 2-2 4 4Z"/></svg>
-            Clean Selected (<span id="cleanSelectedSizeStr">0 B</span>)
-          `;
-        }
-      }
+      } catch (e) {}
     }
 
     if (sudoTargets.length > 0) {
       this.showSudoCommandModal(sudoTargets, userFreedStr);
     } else {
-      if (userFreedStr) {
-        this.toast(`Clean complete. Freed ${userFreedStr} of disk space!`, 'success');
-      }
+      if (userFreedStr) this.toast(`Clean complete! Freed ${userFreedStr}`, 'success');
       await this.scanCleaner(true);
-      this.updateCleanerSelectionMetrics();
     }
   }
 
@@ -1881,164 +1080,127 @@ class TarGzApp {
     }
 
     try {
-      this.toast('Cleaning cache...', 'info');
       const res = await fetch('/api/cleaner/clean', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targets: [targetId] })
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const failed = (data.results || []).find(r => !r.success);
-      if (failed && failed.needs_sudo) {
-        this.showSudoCommandModal([failed]);
-        return;
+      if (res.ok) {
+        const data = await res.json();
+        this.toast(`Cleaned ${data.freed_formatted || '0 B'}`, 'success');
+        await this.scanCleaner(true);
       }
-      const freedStr = data.freed_formatted || '0 B';
-      this.toast(`Cleaned ${freedStr}`, 'success');
-      await this.scanCleaner(true);
     } catch (e) {
-      console.error('Single clean failed:', e);
-      this.toast('Clean failed: ' + e.message, 'error');
+      this.toast('Clean failed', 'error');
     }
   }
 
-  // =========================================================================
-  // Self Update
-  // =========================================================================
-  async triggerDirectUpdate() {
-    const btn = document.getElementById('updateSelfBtn');
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = `<svg class="icon spin" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Updating...`;
-    }
-    this.toast('Updating Clinux from GitHub...', 'info');
+  showSudoCommandModal(sudoTargets, userFreedNotice = '') {
+    const desc = document.getElementById('sudoCommandDesc');
+    const codeEl = document.getElementById('sudoCommandCode');
+    const noticeEl = document.getElementById('sudoNonRootCleanNotice');
 
-    try {
-      const res = await fetch('/api/self-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        this.toast('Clinux updated successfully! Reloading...', 'success');
-        setTimeout(() => window.location.reload(), 1200);
+    const names = sudoTargets.map(t => t.name || t.id).join(', ');
+    if (desc) desc.innerText = `Root privileges required to clean: ${names}`;
+
+    const commands = sudoTargets.map(t => t.sudo_command || `sudo rm -rf '${t.path}'/*`);
+    if (codeEl) codeEl.textContent = Array.from(new Set(commands)).join(' && ');
+
+    if (noticeEl) {
+      if (userFreedNotice) {
+        noticeEl.style.display = 'block';
+        noticeEl.innerText = `User caches cleaned successfully (freed ${userFreedNotice}).`;
       } else {
-        this.toast('Update failed: ' + (data.error || 'Check terminal'), 'error');
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = `
-            <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
-            Update
-          `;
-        }
-      }
-    } catch (e) {
-      this.toast('Update request failed: ' + e.message, 'error');
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = `
-          <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
-          Update
-        `;
+        noticeEl.style.display = 'none';
       }
     }
+    this.openModal('sudoCommandModal');
+  }
+
+  copySudoCommand() {
+    const codeEl = document.getElementById('sudoCommandCode');
+    if (codeEl && codeEl.textContent) {
+      navigator.clipboard.writeText(codeEl.textContent).then(() => {
+        this.toast('Command copied to clipboard!', 'success');
+      });
+    }
+  }
+
+  async completeSudoCommandClean() {
+    this.closeModal('sudoCommandModal');
+    await this.scanCleaner(true);
   }
 
   // =========================================================================
   // AI Tooling & Skills Manager
   // =========================================================================
-
   setAISubTab(subTab) {
     this.aiSubTab = subTab;
     const tabSkills = document.getElementById('aiTabSkills');
     const tabStorage = document.getElementById('aiTabStorage');
     const secSkills = document.getElementById('aiSkillsSection');
     const secStorage = document.getElementById('aiStorageSection');
-    const actionsRight = document.getElementById('aiSkillsActions');
 
-    if (tabSkills) tabSkills.classList.toggle('active', subTab === 'skills');
-    if (tabStorage) tabStorage.classList.toggle('active', subTab === 'storage');
+    if (tabSkills) tabSkills.classList.toggle('pressed', subTab === 'skills');
+    if (tabStorage) tabStorage.classList.toggle('pressed', subTab === 'storage');
 
     if (subTab === 'skills') {
       if (secSkills) secSkills.style.display = 'block';
       if (secStorage) secStorage.style.display = 'none';
-      if (actionsRight) actionsRight.style.display = 'flex';
-      if (this.aiSkills.length === 0) {
-        this.fetchAISkills();
-      }
+      if (this.aiSkills.length === 0) this.fetchAISkills();
     } else {
       if (secSkills) secSkills.style.display = 'none';
       if (secStorage) secStorage.style.display = 'block';
-      if (actionsRight) actionsRight.style.display = 'none';
       this.fetchAIStorage(false);
     }
   }
 
   async loadAIData() {
-    await Promise.all([
-      this.fetchAISkills(),
-      this.fetchAIStorage(false)
-    ]);
+    await Promise.all([this.fetchAISkills(), this.fetchAIStorage(false)]);
   }
 
   async rescanAI() {
     this.toast('Scanning AI skills and storage...', 'info');
-    await Promise.all([
-      this.fetchAISkills(),
-      this.fetchAIStorage(true)
-    ]);
+    await Promise.all([this.fetchAISkills(), this.fetchAIStorage(true)]);
     this.toast('AI scan refreshed', 'success');
   }
 
   async fetchAISkills() {
     try {
       const res = await fetch('/api/ai/skills');
-      if (!res.ok) throw new Error('Failed to load skills');
-      const data = await res.json();
-      this.aiSkills = data.skills || [];
-      this.aiCategories = data.categories || [];
+      if (res.ok) {
+        const data = await res.json();
+        this.aiSkills = data.skills || [];
+        this.aiCategories = data.categories || [];
 
-      // Update badges
-      const badge = document.getElementById('aiSkillsBadge');
-      const countPill = document.getElementById('aiSkillsCount');
-      const activeCount = this.aiSkills.filter(s => s.active).length;
-      if (badge) badge.textContent = `${activeCount}/${this.aiSkills.length}`;
-      if (countPill) countPill.textContent = `${activeCount}/${this.aiSkills.length}`;
+        const badge = document.getElementById('aiSkillsBadge');
+        const countPill = document.getElementById('aiSkillsCount');
+        const activeCount = this.aiSkills.filter(s => s.active).length;
+        if (badge) badge.textContent = `${activeCount}/${this.aiSkills.length}`;
+        if (countPill) countPill.textContent = `${activeCount}/${this.aiSkills.length}`;
 
-      this.populateAICategories();
-      this.renderAISkills();
-    } catch (e) {
-      console.error('fetchAISkills error:', e);
-    }
+        this.populateAICategories();
+        this.renderAISkills();
+      }
+    } catch (e) {}
   }
 
   populateAICategories() {
     const select = document.getElementById('aiCategoryFilter');
     if (!select) return;
-
-    const currentVal = this.aiFilterCategory;
-    let html = '<option value="all">All Categories (' + this.aiSkills.length + ')</option>';
+    let html = '<option value="all">All Categories</option>';
     this.aiCategories.forEach(cat => {
-      const count = this.aiSkills.filter(s => s.category === cat).length;
-      html += `<option value="${this.escapeHtml(cat)}">${this.escapeHtml(cat)} (${count})</option>`;
+      html += `<option value="${this.escapeHtml(cat)}">${this.escapeHtml(cat)}</option>`;
     });
     select.innerHTML = html;
-    select.value = currentVal;
   }
 
   updateAgentTargets() {
-    const claude = document.getElementById('agentTargetClaude')?.checked;
-    const agy = document.getElementById('agentTargetAgy')?.checked;
-    const gemini = document.getElementById('agentTargetGemini')?.checked;
-    const codex = document.getElementById('agentTargetCodex')?.checked;
-
     const targets = [];
-    if (claude) targets.push('claude');
-    if (agy) targets.push('agy');
-    if (gemini) targets.push('gemini');
-    if (codex) targets.push('codex');
-
+    if (document.getElementById('agentTargetClaude')?.checked) targets.push('claude');
+    if (document.getElementById('agentTargetAgy')?.checked) targets.push('agy');
+    if (document.getElementById('agentTargetGemini')?.checked) targets.push('gemini');
+    if (document.getElementById('agentTargetCodex')?.checked) targets.push('codex');
     this.selectedAgentTargets = targets;
   }
 
@@ -2054,14 +1216,10 @@ class TarGzApp {
 
   getFilteredSkills() {
     return this.aiSkills.filter(s => {
-      if (this.aiFilterCategory !== 'all' && s.category !== this.aiFilterCategory) {
-        return false;
-      }
+      if (this.aiFilterCategory !== 'all' && s.category !== this.aiFilterCategory) return false;
       if (this.aiSkillSearchQuery) {
         const text = `${s.name} ${s.category} ${s.description}`.toLowerCase();
-        if (!text.includes(this.aiSkillSearchQuery)) {
-          return false;
-        }
+        if (!text.includes(this.aiSkillSearchQuery)) return false;
       }
       return true;
     });
@@ -2074,65 +1232,60 @@ class TarGzApp {
     const filtered = this.getFilteredSkills();
 
     if (filtered.length === 0) {
-      container.innerHTML = `
-        <div style="grid-column: 1 / -1; padding: 2.5rem; text-align: center; color: var(--text-muted);">
-          <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🔍</div>
-          <div>No skills match your current category or search filter.</div>
-        </div>
-      `;
+      container.innerHTML = `<div class="terminal-box" style="padding:16px;">No skills match filter.</div>`;
       return;
     }
 
-    container.innerHTML = filtered.map(skill => {
-      const activeTargets = skill.active_targets || {};
-      const targetTags = Object.keys(activeTargets).map(tgt => {
-        const isTgtActive = activeTargets[tgt];
-        return `<span class="ai-agent-tag ${isTgtActive ? 'active' : ''}">${this.escapeHtml(tgt)}</span>`;
-      }).join('');
+    const groups = {};
+    filtered.forEach(s => {
+      const cat = (s.category || 'GENERAL').toUpperCase();
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(s);
+    });
 
-      return `
-        <div class="ai-skill-card ${skill.active ? 'active' : ''}" id="card-${this.escapeHtml(skill.key.replace('/', '-'))}">
-          <div class="ai-skill-card-top">
-            <div>
-              <div class="ai-skill-card-title">
-                ${this.escapeHtml(skill.display_name || skill.name)}
-              </div>
-              <span class="ai-skill-badge">${this.escapeHtml(skill.category)}</span>
-            </div>
-            <label class="ai-switch" title="Toggle skill active state">
-              <input type="checkbox" ${skill.active ? 'checked' : ''} onchange="app.toggleSkill('${this.escapeHtml(skill.key)}', this.checked)">
-              <span class="ai-slider"></span>
-            </label>
-          </div>
-          <div class="ai-skill-desc">
-            ${this.escapeHtml(skill.description || 'No description provided.')}
-          </div>
-          <div class="ai-skill-card-footer">
-            <div class="ai-agent-badges">
-              ${targetTags}
-            </div>
-            <span style="font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono);">
-              ${skill.active ? '✓ Active' : '○ Inactive'}
-            </span>
-          </div>
+    let html = '';
+    for (const [catName, skillList] of Object.entries(groups)) {
+      html += `
+        <div class="retro-panel" style="margin-top:0; margin-bottom:10px;">
+          <div class="retro-panel-title">${this.escapeHtml(catName)}</div>
+          <table class="retro-table">
+            <thead>
+              <tr>
+                <th style="width:24px;">ST</th>
+                <th>SKILL NAME</th>
+                <th>DESCRIPTION</th>
+                <th style="width:90px;">STATUS</th>
+                <th style="width:80px;">ACTION</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${skillList.map(skill => `
+                <tr class="${skill.active ? 'selected' : ''}">
+                  <td style="color:${skill.active ? 'var(--c-terminal-green-bright)' : 'var(--text-muted)'}; text-align:center;">
+                    ${skill.active ? '●' : '○'}
+                  </td>
+                  <td><strong style="color:${skill.active ? 'var(--c-terminal-green-bright)' : 'var(--c-warm-beige)'};">${this.escapeHtml(skill.display_name || skill.name)}</strong></td>
+                  <td style="font-size:11px; color:var(--text-muted);">${this.escapeHtml(skill.description || '')}</td>
+                  <td><strong style="color:${skill.active ? 'var(--c-terminal-green-bright)' : 'var(--text-muted)'};">${skill.active ? 'ENABLED' : 'DISABLED'}</strong></td>
+                  <td>
+                    <button class="retro-btn ${skill.active ? '' : 'retro-btn-green'}" onclick="app.toggleSkill('${this.escapeHtml(skill.key)}', ${!skill.active})">
+                      ${skill.active ? '[ OFF ]' : '[ ON ]'}
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
         </div>
       `;
-    }).join('');
+    }
+
+    container.innerHTML = html;
   }
 
   async toggleSkill(skillKey, active) {
     this.updateAgentTargets();
     const targets = this.selectedAgentTargets.length > 0 ? this.selectedAgentTargets : ['claude', 'agy'];
-
-    // Optimistic UI update
-    const skill = this.aiSkills.find(s => s.key === skillKey);
-    if (skill) {
-      skill.active = active;
-      targets.forEach(tgt => {
-        if (skill.active_targets) skill.active_targets[tgt] = active;
-      });
-      this.renderAISkills();
-    }
 
     try {
       const res = await fetch('/api/ai/skills/toggle', {
@@ -2140,15 +1293,12 @@ class TarGzApp {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: skillKey, active, targets })
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || (data.errors && data.errors.join(', ')) || 'Toggle failed');
+      if (res.ok) {
+        this.toast(`${active ? 'Activated' : 'Deactivated'} ${skillKey}`, 'success');
+        await this.fetchAISkills();
       }
-      this.toast(`${active ? 'Activated' : 'Deactivated'} ${skillKey}`, 'success');
-      await this.fetchAISkills();
     } catch (e) {
-      this.toast(`Failed to update skill: ${e.message}`, 'error');
-      await this.fetchAISkills();
+      this.toast('Toggle failed', 'error');
     }
   }
 
@@ -2158,10 +1308,6 @@ class TarGzApp {
     const cat = this.aiFilterCategory;
 
     if (cat === 'all') {
-      const confirmAll = confirm(`${active ? 'Activate' : 'Deactivate'} ALL skills across all categories?`);
-      if (!confirmAll) return;
-
-      this.toast(`${active ? 'Activating' : 'Deactivating'} all categories...`, 'info');
       for (const c of this.aiCategories) {
         await fetch('/api/ai/skills/toggle', {
           method: 'POST',
@@ -2169,265 +1315,162 @@ class TarGzApp {
           body: JSON.stringify({ category: c, active, targets })
         });
       }
-      this.toast(`Updated all skills`, 'success');
-      await this.fetchAISkills();
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/ai/skills/toggle', {
+    } else {
+      await fetch('/api/ai/skills/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: cat, active, targets })
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Bulk toggle failed');
-      }
-      this.toast(`${active ? 'Activated' : 'Deactivated'} category '${cat}'`, 'success');
-      await this.fetchAISkills();
-    } catch (e) {
-      this.toast(`Failed to update category: ${e.message}`, 'error');
     }
+    this.toast(`Updated skills`, 'success');
+    await this.fetchAISkills();
   }
 
   async fetchAIStorage(force) {
     try {
       const res = await fetch('/api/ai/storage');
-      if (!res.ok) throw new Error('Failed to load storage data');
-      const data = await res.json();
-      this.aiStorage = data;
-
-      const totalFormatted = data.total_size_formatted || '0 B';
-      const storageBadge = document.getElementById('aiStorageTotal');
-      const heroSize = document.getElementById('aiStorageHeroSize');
-      if (storageBadge) storageBadge.textContent = totalFormatted;
-      if (heroSize) heroSize.textContent = totalFormatted;
-
-      this.renderAIStorage();
-    } catch (e) {
-      console.error('fetchAIStorage error:', e);
-    }
+      if (res.ok) {
+        const data = await res.json();
+        this.aiStorage = data;
+        const total = data.total_size_formatted || '0 B';
+        const badge = document.getElementById('aiStorageTotal');
+        if (badge) badge.textContent = total;
+        this.renderAIStorage();
+      }
+    } catch (e) {}
   }
 
   renderAIStorage() {
     const modelsList = document.getElementById('aiModelsList');
     const workspacesList = document.getElementById('aiWorkspacesList');
-    const modelsCount = document.getElementById('aiModelsCount');
-    const workspacesCount = document.getElementById('aiWorkspacesCount');
-
     const models = this.aiStorage.models || [];
     const workspaces = this.aiStorage.workspaces || [];
 
-    if (modelsCount) modelsCount.textContent = `${models.length} model${models.length === 1 ? '' : 's'}`;
-    if (workspacesCount) workspacesCount.textContent = `${workspaces.length} target${workspaces.length === 1 ? '' : 's'}`;
-
     if (modelsList) {
       if (models.length === 0) {
-        modelsList.innerHTML = `
-          <div style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.8rem;">
-            No local Hugging Face, Ollama, or PyTorch models detected.
-          </div>
-        `;
+        modelsList.innerHTML = `<div style="padding:8px; color:var(--text-muted);">No local models detected.</div>`;
       } else {
-        modelsList.innerHTML = models.map(m => {
-          const sourceBadgeColor = m.source === 'huggingface' ? 'var(--accent-amber)' : (m.source === 'ollama' ? 'var(--accent-cyan)' : 'var(--accent-emerald)');
-          return `
-            <div class="cleaner-target-row" style="align-items: center;">
-              <div class="cleaner-row-left" style="gap: 0.75rem;">
-                <span class="ai-skill-badge" style="color:${sourceBadgeColor}; border-color:currentColor;">${this.escapeHtml(m.source)}</span>
-                <div>
-                  <div class="cleaner-target-name">${this.escapeHtml(m.name)}</div>
-                  <div class="cleaner-target-path" title="${this.escapeHtml(m.path)}">${this.escapeHtml(m.path)}</div>
-                </div>
-              </div>
-              <div class="cleaner-row-right" style="gap: 1rem;">
-                <span class="cleaner-target-size">${this.escapeHtml(m.size_formatted)}</span>
-                <button class="btn btn-secondary btn-sm" onclick="app.deleteAIModel('${this.escapeHtml(m.id)}', '${this.escapeHtml(m.name)}')" title="Delete model weights">
-                  <svg class="icon" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                  Delete
-                </button>
-              </div>
-            </div>
-          `;
-        }).join('');
+        modelsList.innerHTML = `
+          <table class="retro-table">
+            <thead>
+              <tr><th>SOURCE</th><th>MODEL NAME</th><th>SIZE</th><th>ACTION</th></tr>
+            </thead>
+            <tbody>
+              ${models.map(m => `
+                <tr>
+                  <td><strong>${this.escapeHtml(m.source)}</strong></td>
+                  <td>${this.escapeHtml(m.name)}</td>
+                  <td><strong style="color:var(--c-warning-yellow);">${m.size_formatted}</strong></td>
+                  <td><button class="retro-btn retro-btn-danger" onclick="app.deleteAIModel('${this.escapeHtml(m.id)}', '${this.escapeHtml(m.name)}')">Delete</button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
       }
     }
 
     if (workspacesList) {
       if (workspaces.length === 0) {
-        workspacesList.innerHTML = `
-          <div style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.8rem;">
-            No agent workspaces or project logs detected.
-          </div>
-        `;
+        workspacesList.innerHTML = `<div style="padding:8px; color:var(--text-muted);">No workspaces detected.</div>`;
       } else {
-        workspacesList.innerHTML = workspaces.map(w => `
-          <div class="cleaner-target-row" style="align-items: center;">
-            <div class="cleaner-row-left">
-              <div>
-                <div class="cleaner-target-name">${this.escapeHtml(w.name)}</div>
-                <div class="cleaner-target-path" style="color:var(--text-muted); font-size:0.75rem;">${this.escapeHtml(w.description || w.path)}</div>
-              </div>
-            </div>
-            <div class="cleaner-row-right" style="gap: 1rem;">
-              <span class="cleaner-target-size">${this.escapeHtml(w.size_formatted)}</span>
-              <button class="btn btn-secondary btn-sm" onclick="app.cleanAIWorkspace('${this.escapeHtml(w.id)}', '${this.escapeHtml(w.name)}')" title="Clean workspace logs and cache">
-                <svg class="icon" viewBox="0 0 24 24"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 5l5 5"/><path d="m22 20-2 2-4-4 2-2 4 4Z"/></svg>
-                Clean
-              </button>
-            </div>
-          </div>
-        `).join('');
+        workspacesList.innerHTML = `
+          <table class="retro-table">
+            <thead>
+              <tr><th>TARGET</th><th>SIZE</th><th>FILES</th><th>ACTION</th></tr>
+            </thead>
+            <tbody>
+              ${workspaces.map(w => `
+                <tr>
+                  <td><strong>${this.escapeHtml(w.name)}</strong></td>
+                  <td><strong style="color:var(--c-warning-yellow);">${w.size_formatted}</strong></td>
+                  <td>${w.file_count}</td>
+                  <td><button class="retro-btn" onclick="app.cleanAIWorkspace('${this.escapeHtml(w.id)}', '${this.escapeHtml(w.name)}')">Clean Logs</button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
       }
     }
   }
 
   async deleteAIModel(modelId, modelName) {
-    if (!confirm(`Are you sure you want to delete model "${modelName}"? This action cannot be undone.`)) {
-      return;
-    }
-
+    if (!confirm(`Delete model "${modelName}"?`)) return;
     try {
-      this.toast(`Deleting ${modelName}...`, 'info');
       const res = await fetch('/api/ai/storage/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model_id: modelId })
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to delete model');
+      if (res.ok) {
+        this.toast(`Deleted ${modelName}`, 'success');
+        await this.fetchAIStorage(true);
       }
-      this.toast(`Deleted ${modelName}. Freed: ${data.freed_formatted || 'Done'}`, 'success');
-      await this.fetchAIStorage(true);
-    } catch (e) {
-      this.toast(`Delete failed: ${e.message}`, 'error');
-    }
+    } catch (e) {}
   }
 
   async cleanAIWorkspace(workspaceId, workspaceName) {
-    if (!confirm(`Clean workspace logs for "${workspaceName}"? This removes historical conversation caches and temporary files.`)) {
-      return;
-    }
-
+    if (!confirm(`Clean logs for "${workspaceName}"?`)) return;
     try {
-      this.toast(`Cleaning ${workspaceName}...`, 'info');
       const res = await fetch('/api/ai/storage/clean', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workspace_id: workspaceId })
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to clean workspace');
+      if (res.ok) {
+        this.toast(`Cleaned ${workspaceName}`, 'success');
+        await this.fetchAIStorage(true);
       }
-      this.toast(`Cleaned ${workspaceName}. Freed: ${data.freed_formatted}`, 'success');
-      await this.fetchAIStorage(true);
-    } catch (e) {
-      this.toast(`Clean failed: ${e.message}`, 'error');
-    }
+    } catch (e) {}
   }
 
   // =========================================================================
   // Dotfiles Manager
   // =========================================================================
-
   async fetchDotfilesStatus(showToast = false) {
-    if (showToast) this.toast('Refreshing dotfiles status...', 'info');
     try {
       const res = await fetch('/api/dotfiles/status');
-      if (!res.ok) throw new Error('Failed to load dotfiles status');
-      const data = await res.json();
-      this.dotfilesData = data;
-      this.renderDotfiles();
-      if (showToast) this.toast('Dotfiles status refreshed', 'success');
-    } catch (e) {
-      console.error('fetchDotfilesStatus error:', e);
-      if (showToast) this.toast('Failed to load dotfiles: ' + e.message, 'error');
-    }
+      if (res.ok) {
+        const data = await res.json();
+        this.dotfilesData = data;
+        this.renderDotfiles();
+        if (showToast) this.toast('Dotfiles refreshed', 'success');
+      }
+    } catch (e) {}
   }
 
   renderDotfiles() {
     const d = this.dotfilesData;
     if (!d) return;
 
-    const badge = document.getElementById('dotfilesBadge');
     const heroTitle = document.getElementById('dotfilesHeroTitle');
-    const heroDesc = document.getElementById('dotfilesHeroDesc');
     const branch = document.getElementById('dotfilesBranch');
     const gitState = document.getElementById('dotfilesGitState');
-    const lastCommit = document.getElementById('dotfilesLastCommit');
     const pkgsList = document.getElementById('dotfilesPackagesList');
 
     if (heroTitle) heroTitle.textContent = d.repo_path || '~/.dotfiles';
-
-    if (!d.exists) {
-      if (heroDesc) heroDesc.textContent = 'Repository directory not found at ~/.dotfiles';
-      if (badge) badge.style.display = 'none';
-      return;
-    }
-
     if (d.git && d.git.is_git) {
       if (branch) branch.textContent = d.git.branch || 'main';
-      if (lastCommit) lastCommit.textContent = d.git.last_commit || 'No commits';
       if (gitState) {
-        if (d.git.clean) {
-          gitState.textContent = 'clean';
-          gitState.style.background = 'rgba(16,185,129,0.15)';
-          gitState.style.color = 'var(--accent-emerald)';
-          if (badge) badge.style.display = 'none';
-        } else {
-          gitState.textContent = `${d.git.modified_files} modified`;
-          gitState.style.background = 'rgba(245,158,11,0.15)';
-          gitState.style.color = 'var(--accent-amber)';
-          if (badge) {
-            badge.style.display = 'inline-block';
-            badge.textContent = `${d.git.modified_files} modified`;
-          }
-        }
+        gitState.textContent = d.git.clean ? 'clean' : `${d.git.modified_files} modified`;
+        gitState.style.color = d.git.clean ? 'var(--c-terminal-green-bright)' : 'var(--c-warning-yellow)';
       }
     }
 
     if (pkgsList && d.packages) {
-      if (d.packages.length === 0) {
-        pkgsList.innerHTML = `<div style="color:var(--text-muted); font-size:0.75rem;">No package directories detected in repository.</div>`;
-      } else {
-        pkgsList.innerHTML = d.packages.map(p => {
-          const name = typeof p === 'object' ? p.name : p;
-          const stowed = typeof p === 'object' ? p.stowed : false;
-          const statusBadge = stowed
-            ? `<span class="ai-skill-badge" style="color:var(--accent-emerald); border-color:currentColor; font-size:0.7rem;">stowed</span>`
-            : `<span class="ai-skill-badge" style="color:var(--text-muted); border-color:currentColor; font-size:0.7rem;">not stowed</span>`;
-
-          const actionBtn = stowed
-            ? `
-              <button class="btn btn-secondary btn-xs" onclick="app.runSelectiveStow('unstow', '${this.escapeHtml(name)}')" title="Unlink this package">
-                Unstow
-              </button>
-              <button class="btn btn-secondary btn-xs" onclick="app.runSelectiveStow('restow', '${this.escapeHtml(name)}')" title="Re-link package">
-                Restow
-              </button>
-            `
-            : `
-              <button class="btn btn-primary btn-xs" onclick="app.runSelectiveStow('stow', '${this.escapeHtml(name)}')" title="Link this package">
-                Stow
-              </button>
-            `;
-
-          return `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.6rem; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:var(--radius-sm);">
-              <div style="display:flex; align-items:center; gap:0.5rem;">
-                <span style="font-family:var(--font-mono); font-weight:600;">${this.escapeHtml(name)}</span>
-                ${statusBadge}
-              </div>
-              <div style="display:flex; gap:0.35rem;">
-                ${actionBtn}
-              </div>
-            </div>
-          `;
-        }).join('');
-      }
+      pkgsList.innerHTML = d.packages.map(p => {
+        const name = typeof p === 'object' ? p.name : p;
+        const stowed = typeof p === 'object' ? p.stowed : false;
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 6px; background:var(--c-near-black); border:1px solid var(--c-shadow);">
+            <span>${this.escapeHtml(name)} <small style="color:${stowed ? 'var(--c-terminal-green-bright)' : 'var(--text-muted)'};">[${stowed ? 'STOWED' : 'NOT STOWED'}]</small></span>
+            <button class="retro-btn" onclick="app.runDotfilesCommand('${stowed ? 'unstow' : 'stow'}', null, '${this.escapeHtml(name)}')">
+              ${stowed ? 'Unstow' : 'Stow'}
+            </button>
+          </div>
+        `;
+      }).join('');
     }
   }
 
@@ -2435,9 +1478,8 @@ class TarGzApp {
     const consoleElem = document.getElementById('dotfilesOutputConsole');
     const badgeElem = document.getElementById('dotfilesOutputBadge');
 
-    const cmdLabel = packageName ? `${command} ${packageName}` : command;
-    if (badgeElem) badgeElem.textContent = `Running ${cmdLabel}...`;
-    if (consoleElem) consoleElem.textContent = `--> dotfiles ${cmdLabel}...\n`;
+    if (badgeElem) badgeElem.textContent = 'Running...';
+    if (consoleElem) consoleElem.textContent = `--> dotfiles ${command}...\n`;
 
     try {
       const res = await fetch('/api/dotfiles/run', {
@@ -2446,45 +1488,11 @@ class TarGzApp {
         body: JSON.stringify({ command, message, package: packageName })
       });
       const data = await res.json();
-      if (consoleElem) {
-        consoleElem.textContent = data.output || (data.success ? '✓ Completed without output.' : '✗ ' + (data.error || 'Failed'));
-      }
-      if (badgeElem) {
-        badgeElem.textContent = data.success ? 'Success' : 'Failed';
-      }
-
-      if (data.success) {
-        this.toast(`dotfiles ${cmdLabel} completed`, 'success');
-      } else {
-        this.toast(`dotfiles ${cmdLabel} failed: ` + (data.error || 'Check console'), 'error');
-      }
-
+      if (consoleElem) consoleElem.textContent = data.output || (data.success ? 'Completed.' : 'Failed.');
+      if (badgeElem) badgeElem.textContent = data.success ? 'Success' : 'Failed';
       await this.fetchDotfilesStatus(false);
     } catch (e) {
-      if (consoleElem) consoleElem.textContent = `Error executing request: ${e.message}`;
-      if (badgeElem) badgeElem.textContent = 'Error';
-      this.toast(`Request failed: ${e.message}`, 'error');
-    }
-  }
-
-  async runSelectiveStow(action, packageName) {
-    await this.runDotfilesCommand(action, null, packageName);
-  }
-
-  async stowAllPackages() {
-    await this.runDotfilesCommand('apply');
-  }
-
-  async unstowAllPackages() {
-    if (!confirm('Unlink (unstow) all packages from your home directory?')) return;
-    const d = this.dotfilesData;
-    if (!d || !d.packages) return;
-    for (const p of d.packages) {
-      const name = typeof p === 'object' ? p.name : p;
-      const stowed = typeof p === 'object' ? p.stowed : false;
-      if (stowed) {
-        await this.runDotfilesCommand('unstow', null, name);
-      }
+      if (consoleElem) consoleElem.textContent = `Error: ${e.message}`;
     }
   }
 
@@ -2492,21 +1500,179 @@ class TarGzApp {
     const input = document.getElementById('dotfilesCommitMsg');
     const msg = input ? input.value.trim() : '';
     if (!msg) {
-      this.toast('Please enter a commit message before saving', 'info');
-      if (input) input.focus();
+      this.toast('Enter commit message', 'info');
       return;
     }
     this.runDotfilesCommand('save', msg);
     if (input) input.value = '';
   }
 
-  clearDotfilesConsole() {
-    const consoleElem = document.getElementById('dotfilesOutputConsole');
-    const badgeElem = document.getElementById('dotfilesOutputBadge');
-    if (consoleElem) consoleElem.textContent = 'Console cleared.';
-    if (badgeElem) badgeElem.textContent = 'Ready';
+  // =========================================================================
+  // Self Update
+  // =========================================================================
+  async triggerDirectUpdate() {
+    this.toast('Updating Clinux from GitHub...', 'info');
+    try {
+      const res = await fetch('/api/self-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        this.toast('Updated! Reloading...', 'success');
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        this.toast('Update failed', 'error');
+      }
+    } catch (e) {
+      this.toast('Update failed', 'error');
+    }
+  }
+
+  // =========================================================================
+  // File Browser Modal
+  // =========================================================================
+  openFileBrowser(mode, targetInputId, callback = null) {
+    this.browserMode = mode || 'all';
+    this.browserTargetInputId = targetInputId;
+    this.browserOnSelectCallback = callback;
+    this.browserSelectedItem = null;
+
+    const val = document.getElementById(targetInputId)?.value;
+    this.navigateToPath(val && val.startsWith('/') ? val : '');
+    this.openModal('fileBrowserModal');
+  }
+
+  async navigateToPath(path) {
+    try {
+      const res = await fetch(`/api/browse?path=${encodeURIComponent(path || '')}&mode=${this.browserMode}`);
+      if (res.ok) {
+        const data = await res.json();
+        this.browserCurrentPath = data.current_path;
+        this.renderBrowser(data);
+      }
+    } catch (e) {}
+  }
+
+  renderBrowser(data) {
+    const crumbs = document.getElementById('browserBreadcrumbs');
+    if (crumbs) crumbs.innerText = data.current_path;
+
+    const list = document.getElementById('browserItemsList');
+    if (!list) return;
+
+    let itemsHtml = '';
+    if (data.parent_path) {
+      itemsHtml += `<div style="cursor:pointer; padding:2px;" onclick="app.navigateToPath('${this.escapeHtml(data.parent_path)}')">[..] Parent Directory</div>`;
+    }
+
+    (data.items || []).forEach(item => {
+      itemsHtml += `
+        <div style="cursor:pointer; padding:2px;" onclick="app.onBrowserItemClick('${this.escapeHtml(item.path)}', this)" ondblclick="app.onBrowserItemDblClick('${this.escapeHtml(item.path)}', ${item.is_dir})">
+          ${item.is_dir ? '[DIR]' : '[FILE]'} ${this.escapeHtml(item.name)}
+        </div>
+      `;
+    });
+    list.innerHTML = itemsHtml;
+  }
+
+  onBrowserItemClick(path, elem) {
+    this.browserSelectedItem = path;
+    const prev = document.getElementById('browserSelectedPreview');
+    if (prev) prev.innerText = `Selected: ${path}`;
+  }
+
+  onBrowserItemDblClick(path, isDir) {
+    if (isDir) this.navigateToPath(path);
+    else this.confirmBrowserSelection(path);
+  }
+
+  confirmBrowserSelection(directPath = null) {
+    const selected = directPath || this.browserSelectedItem || this.browserCurrentPath;
+    if (this.browserTargetInputId) {
+      const input = document.getElementById(this.browserTargetInputId);
+      if (input) {
+        input.value = selected;
+        input.dispatchEvent(new Event('change'));
+      }
+    }
+    if (this.browserOnSelectCallback) this.browserOnSelectCallback(selected);
+    this.closeModal('fileBrowserModal');
+  }
+
+  // =========================================================================
+  // Modal & Help Dialog Utilities
+  // =========================================================================
+  openHelpModal() {
+    this.openModal('helpModal');
+  }
+
+  openCommandPalette() {
+    const cmd = prompt('CLINUX COMMAND PALETTE:\n1: Dashboard\n2: Cleaner\n3: Portable Apps\n4: AI & Skills\n5: Dotfiles\n6: Services\nq: Exit', '1');
+    if (cmd === '1') this.setTab('dashboard');
+    else if (cmd === '2') this.setTab('cleaner');
+    else if (cmd === '3') this.setTab('all');
+    else if (cmd === '4') this.setTab('ai');
+    else if (cmd === '5') this.setTab('dotfiles');
+    else if (cmd === '6') this.setTab('services');
+  }
+
+  closeWindow() {
+    if (confirm('Quit Clinux Utility?')) {
+      window.close();
+    }
+  }
+
+  openModal(modalId) {
+    const el = document.getElementById(modalId);
+    if (el) el.classList.add('open');
+  }
+
+  closeModal(modalId) {
+    const el = document.getElementById(modalId);
+    if (el) el.classList.remove('open');
+  }
+
+  closeAllModals() {
+    document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('open'));
+  }
+
+  toast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `<span>[${type.toUpperCase()}]</span> <span>${this.escapeHtml(message)}</span>`;
+
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+  }
+
+  escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  shortenPath(path) {
+    if (!path) return '';
+    const home = this.systemInfo.home || '';
+    if (home && path.startsWith(home)) return '~' + path.slice(home.length);
+    return path;
+  }
+
+  formatBytes(bytes) {
+    if (!bytes || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let size = bytes;
+    let unitIdx = 0;
+    while (size >= 1024 && unitIdx < units.length - 1) {
+      size /= 1024;
+      unitIdx++;
+    }
+    return `${size.toFixed(1)} ${units[unitIdx]}`;
   }
 }
 
 // Global initialization
-const app = new TarGzApp();
+const app = new ClinuxApp();

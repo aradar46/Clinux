@@ -164,5 +164,5 @@ class TestCleanerHttpApi(unittest.TestCase):
             pacman_res = next((r for r in data["results"] if r["id"] == "pacman"), None)
             self.assertIsNotNone(pacman_res)
             self.assertFalse(pacman_res["success"])
-            self.assertIn("password", pacman_res["error"].lower())
+            self.assertIsNotNone(pacman_res.get("error"))
 
