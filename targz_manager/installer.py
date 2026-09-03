@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
 from .db import Database
+from .utils import compute_directory_size
 
 DEFAULT_OPT_DIR = Path.home() / ".local" / "opt"
 DEFAULT_BIN_DIR = Path.home() / ".local" / "bin"
@@ -608,7 +609,8 @@ class Installer:
             if candidates["icons"]:
                 icon_full_str = candidates["icons"][0]["full_path"]
 
-        calc_size = sum(f.stat().st_size for f in target_dir.rglob('*') if f.is_file() and not f.is_symlink())
+        # Fast directory size calculation using os.scandir (avoiding slow Path.rglob)
+        calc_size = compute_directory_size(target_dir)
 
         disp_name = display_name or slug.replace('-', ' ').title()
         ver = version or "1.0.0"
@@ -687,11 +689,8 @@ class Installer:
             if candidates["icons"]:
                 icon_full_str = candidates["icons"][0]["full_path"]
 
-        calc_size = 0
-        try:
-            calc_size = sum(f.stat().st_size for f in target_dir.rglob('*') if f.is_file() and not f.is_symlink())
-        except Exception:
-            pass
+        # Fast directory size calculation using os.scandir (avoiding slow Path.rglob)
+        calc_size = compute_directory_size(target_dir)
 
         disp_name = display_name or slug.replace('-', ' ').title()
 
@@ -824,11 +823,8 @@ class Installer:
         if symlink_path:
             symlink_path = self.create_symlink(str(final_exec_path), app["name"])
 
-        calc_size = 0
-        try:
-            calc_size = sum(f.stat().st_size for f in install_path.rglob('*') if f.is_file() and not f.is_symlink())
-        except Exception:
-            pass
+        # Fast directory size calculation using os.scandir (avoiding slow Path.rglob)
+        calc_size = compute_directory_size(install_path)
 
         ver = new_version
         if not ver:
