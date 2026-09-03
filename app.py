@@ -28,6 +28,7 @@ from targz_manager.server import create_server
 from targz_manager.cleaner import SystemCleaner
 from targz_manager.ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
 from targz_manager.dotfiles_manager import DotfilesManager
+from targz_manager.machine import MachineManager
 
 
 def find_free_port(start_port: int = 8421) -> int:
@@ -187,6 +188,12 @@ Examples:
     p_ai_storage = subparsers.add_parser("ai-storage", help="Inspect and manage local AI model weights and agent workspaces")
     p_ai_storage.add_argument("--delete-model", type=str, help="Delete model by ID (e.g. hf:models--bert-base-uncased)")
     p_ai_storage.add_argument("--clean-workspace", type=str, help="Clean workspace by ID (e.g. claude_projects, cursor_storage)")
+
+    p_export = subparsers.add_parser("export", help="Export developer machine manifest (dotfiles, packages, apps, skills) to TOML")
+    p_export.add_argument("output", nargs="?", default="clinux-machine.toml", help="Output file path (default: clinux-machine.toml)")
+
+    p_restore = subparsers.add_parser("restore", help="Restore developer machine state from manifest TOML")
+    p_restore.add_argument("input", nargs="?", default="clinux-machine.toml", help="Input file path (default: clinux-machine.toml)")
 
     p_dotfiles = subparsers.add_parser("dotfiles", help="Manage dotfiles using ~/.dotfiles/dotfiles script and GNU Stow")
     p_dotfiles.add_argument("action", nargs="?", default="status", choices=["status", "check", "apply", "update", "save", "gnome-out", "gnome-in", "stow", "unstow", "restow"], help="Action to run (default: status)")
@@ -539,6 +546,30 @@ Examples:
 
         print("=" * 80)
         print(f"Total AI Storage Footprint: \033[1;36m{data['total_size_formatted']}\033[0m\n")
+        return
+
+    elif args.command == "export":
+        print(f"\n📦 Exporting developer machine state to {args.output}...")
+        mm = MachineManager(db)
+        out_path = mm.export_machine(args.output)
+        print(f"✓ Export complete! Manifest saved to: {out_path}\n")
+        return
+
+    elif args.command == "restore":
+        print(f"\n📦 Restoring developer machine state from {args.input}...")
+        mm = MachineManager(db)
+        results = mm.restore_machine(args.input)
+        print("\n" + "=" * 80)
+        print(f"  MACHINE RESTORE RESULTS: {args.input}")
+        print("=" * 80)
+        for res in results:
+            if res.startswith("Error:"):
+                print(f"\033[1;31m{res}\033[0m")
+            elif res.startswith("  -") or res.startswith("  ->"):
+                print(res)
+            else:
+                print(f"\033[1;34m{res}\033[0m")
+        print("=" * 80 + "\n")
         return
 
     elif args.command == "dotfiles":
