@@ -853,12 +853,12 @@ class SecurityAuditor:
 
     def export_report(self, audit_result: Dict[str, Any], filepath: Optional[str] = None, format_type: str = "text") -> str:
         """Export report to text file or json file."""
-        if not filepath:
-            date_str = datetime.datetime.now().strftime("%Y-%m-%d")
-            ext = "json" if format_type == "json" else "txt"
-            filepath = f"clinux-security-{date_str}.{ext}"
+        if filepath:
+            raise ValueError("Custom export paths are not supported")
 
-        target_p = Path(filepath).resolve()
+        date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        ext = "json" if format_type == "json" else "txt"
+        target_p = self.home / f"clinux-security-{date_str}.{ext}"
 
         if format_type == "json":
             import json
