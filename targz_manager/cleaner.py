@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import shlex
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -447,7 +448,7 @@ class SystemCleaner:
             needs_sudo = target.get("needs_sudo", False) or Installer.check_needs_sudo(path)
             sudo_cmd = target.get("sudo_command")
             if not sudo_cmd and needs_sudo:
-                sudo_cmd = f"sudo rm -rf '{path}'/*"
+                sudo_cmd = f"sudo rm -rf {shlex.quote(str(path))}/*"
 
             results.append({
                 "id": target["id"],
@@ -491,7 +492,7 @@ class SystemCleaner:
         needs_sudo = target.get("needs_sudo", False) or (path.exists() and Installer.check_needs_sudo(path))
         sudo_cmd = target.get("sudo_command")
         if not sudo_cmd and needs_sudo:
-            sudo_cmd = f"sudo rm -rf '{path}'/*"
+            sudo_cmd = f"sudo rm -rf {shlex.quote(str(path))}/*"
 
         if not path.exists() and not (needs_sudo and sudo_password):
             return {
@@ -517,7 +518,7 @@ class SystemCleaner:
                     elif target_id == "dnf":
                         subprocess.run(["dnf", "clean", "all"], check=False)
                     else:
-                        subprocess.run(["sh", "-c", f"rm -rf '{path}'/*"], check=False)
+                        subprocess.run(["sh", "-c", f"rm -rf {shlex.quote(str(path))}/*"], check=False)
                 elif sudo_password:
                     if target_id == "pacman":
                         sub_cmd = ["pacman", "-Scc", "--noconfirm"]
@@ -526,7 +527,7 @@ class SystemCleaner:
                     elif target_id == "dnf":
                         sub_cmd = ["dnf", "clean", "all"]
                     else:
-                        sub_cmd = ["sh", "-c", f"rm -rf '{path}'/*"]
+                        sub_cmd = ["sh", "-c", f"rm -rf {shlex.quote(str(path))}/*"]
                     cmd = ["sudo", "-S", "-k"] + sub_cmd
                     res = subprocess.run(cmd, input=f"{sudo_password}\n", capture_output=True, text=True)
                     if res.returncode != 0:
