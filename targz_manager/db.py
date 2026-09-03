@@ -188,7 +188,7 @@ class Database:
         values = []
         for k, v in updates.items():
             if k in allowed_fields:
-                fields.append(f"{k} = ?")
+                fields.append(f'"{k}" = ?')
                 if k in ("terminal", "ignored"):
                     values.append(1 if v else 0)
                 else:
@@ -198,7 +198,7 @@ class Database:
             return False
 
         if "updated_at" not in updates:
-            fields.append("updated_at = ?")
+            fields.append('"updated_at" = ?')
             values.append(datetime.datetime.now().isoformat())
 
         values.append(app_id)

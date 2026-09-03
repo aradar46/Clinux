@@ -99,6 +99,29 @@ class TestTarGzManager(unittest.TestCase):
         self.assertTrue(deleted)
         self.assertEqual(len(self.db.list_apps()), 0)
 
+    def test_update_app_sql_injection_prevention(self):
+        app_id = self.db.add_app({
+            "name": "sqli-app",
+            "display_name": "SQLi Test App",
+            "version": "1.0.0",
+            "category": "Utility",
+            "install_path": str(self.temp_dir / "installed" / "sqli-app"),
+            "executable_path": str(self.temp_dir / "installed" / "sqli-app" / "bin" / "sqli"),
+        })
+
+        # Test malicious key injected into updates dictionary
+        malicious_updates = {
+            "version": "2.0.0",
+            "version = '9.9.9' --": "injected",
+            "non_existent_column": "value"
+        }
+        res = self.db.update_app(app_id, malicious_updates)
+        self.assertTrue(res)
+
+        app = self.db.get_app(app_id)
+        self.assertEqual(app["version"], "2.0.0")
+        self.assertEqual(app["display_name"], "SQLi Test App")
+
     def test_inspect_archive(self):
         info = self.installer.inspect_archive(str(self.tar_gz_path))
         self.assertEqual(info["guessed_name"], "sample-app")
