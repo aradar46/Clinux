@@ -29,6 +29,10 @@ from targz_manager.cleaner import SystemCleaner
 from targz_manager.ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
 from targz_manager.dotfiles_manager import DotfilesManager
 
+from targz_manager.doctor import SystemDoctor
+from targz_manager.disk_analyzer import DiskAnalyzer
+
+
 
 def find_free_port(start_port: int = 8421) -> int:
     """Find available port starting from start_port"""
@@ -177,6 +181,12 @@ Examples:
     p_clean.add_argument("--all", "-a", action="store_true", help="Clean all detected safe caches immediately")
     p_clean.add_argument("--targets", "-t", type=str, help="Comma-separated target IDs to clean (e.g. yay,pip,thumbnails)")
     p_clean.add_argument("--dry-run", action="store_true", help="Scan and list without deleting")
+
+
+    p_doctor = subparsers.add_parser("doctor", help="System Doctor: Diagnose and fix system issues")
+    p_doctor.add_argument("--fix", action="store_true", help="Automatically attempt to fix fixable issues")
+
+    p_disk = subparsers.add_parser("disk", help="Disk Analyzer: Overview of disk usage")
 
     p_skills = subparsers.add_parser("skills", help="Manage AI agent skills across Claude, Antigravity, and Codex")
     p_skills.add_argument("--activate", "-a", type=str, help="Skill key (e.g. science/literature-review) or category to activate")
@@ -446,6 +456,71 @@ Examples:
         if to_clean:
             res = cleaner.clean(to_clean)
             print(f"\n✨ Clean complete. Total space freed: {res['freed_formatted']}\n")
+        return
+
+
+    elif args.command == "doctor":
+        cleaner = SystemCleaner()
+        doctor = SystemDoctor(cleaner=cleaner)
+        print("\n🔍 Running System Doctor...")
+        results = doctor.scan()
+
+        print("\n" + "=" * 80)
+        print("  SYSTEM DOCTOR")
+        print("=" * 80)
+
+        def print_status(count, label):
+            if count > 0:
+                print(f"[!] {count} {label}")
+            else:
+                print(f"[✓] {label.capitalize().replace('failed ', '').replace('broken ', '').replace('old ', '')} healthy")
+
+        print_status(len(results["failed_services"]), "failed systemd services")
+        print_status(len(results["old_kernels"]), "old kernels")
+        if results["reclaimable_cache"] > 0:
+            print(f"[!] {results['reclaimable_cache_formatted']} reclaimable cache")
+        else:
+            print(f"[✓] Caches clean")
+        print_status(len(results["filesystem"]), "filesystem")
+        print_status(len(results["network"]), "network")
+        print_status(len(results["broken_desktop_entries"]), "broken desktop entries")
+
+        problems = results["all_problems"]
+
+        if problems:
+            print(f"\nPotential fixes: {sum(1 for p in problems if p['fixable'])}")
+            print("-" * 80)
+
+            for p in problems:
+                print(f"Problem: {p['description']}")
+                if p['fix_command']:
+                    print(f"Suggested fix: {p['fix_command']}")
+                    if args.fix and p['fixable']:
+                        print("  [Auto-fixing...]")
+                        success = doctor.fix(p)
+                        print(f"  {'✓ Fixed' if success else '✗ Failed to fix'}")
+                print("-" * 40)
+        else:
+            print("\n✓ System is healthy!")
+
+        print("=" * 80 + "\n")
+        return
+
+    elif args.command == "disk":
+        cleaner = SystemCleaner()
+        ai_storage = AIStorageManager()
+        analyzer = DiskAnalyzer(ai_storage=ai_storage, cleaner=cleaner)
+        print("\n🔍 Analyzing Disk Usage...")
+        results = analyzer.analyze()
+
+        print("\n" + "=" * 80)
+        print("  STORAGE")
+        print("=" * 80)
+        print(f"Home                 {results['home_size_formatted']}")
+        print(f"AI Models            {results['ai_models_size_formatted']}")
+        print(f"Developer caches     {results['dev_caches_size_formatted']}")
+        print(f"Package caches       {results['pkg_caches_size_formatted']}")
+        print("=" * 80 + "\n")
         return
 
     elif args.command == "skills":
