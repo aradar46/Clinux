@@ -10,7 +10,7 @@ from socketserver import ThreadingMixIn
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from .db import Database, DEFAULT_DB_PATH
+from .db import Database
 from .installer import (
     Installer,
     ArchiveError,
@@ -22,6 +22,7 @@ from .scanner import SystemScanner
 from .cleaner import SystemCleaner
 from .ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
 from .dotfiles_manager import DotfilesManager
+from .security import SecurityAuditor
 
 import time
 import threading
@@ -102,6 +103,7 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         self.skill_manager = SkillManager()
         self.ai_storage = AIStorageManager()
         self.dotfiles_manager = DotfilesManager()
+        self.security_auditor = SecurityAuditor()
         super().__init__(*args, **kwargs)
 
     def log_message(self, format, *args):
@@ -292,6 +294,11 @@ class AppRequestHandler(BaseHTTPRequestHandler):
 
         elif path == '/api/dotfiles/status':
             results = self.dotfiles_manager.get_status()
+            self._send_json(results)
+            return
+
+        elif path == '/api/security/scan':
+            results = self.security_auditor.audit_all()
             self._send_json(results)
             return
 
@@ -740,6 +747,23 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                     return
                 res = self.dotfiles_manager.run_command(cmd_name, message=msg, package=pkg)
                 self._send_json(res)
+                return
+
+            elif path == '/api/security/export':
+                fmt = body.get('format', 'text')
+                filepath = body.get('filepath')
+                scan_res = self.security_auditor.audit_all()
+                out_path = self.security_auditor.export_report(scan_res, filepath=filepath, format_type=fmt)
+                if fmt == "json":
+                    content = json.dumps(scan_res, indent=2)
+                else:
+                    content = self.security_auditor.format_text_report(scan_res)
+                self._send_json({
+                    "success": True,
+                    "filepath": out_path,
+                    "filename": Path(out_path).name,
+                    "content": content
+                })
                 return
 
             elif path == '/api/self-update':

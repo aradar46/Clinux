@@ -22,12 +22,12 @@
         <span class="titlebar-title">CLINUX 1.0 — SYSTEM UTILITY & MANAGEMENT</span>
       </div>
       <div class="titlebar-controls">
-        <button class="win-btn win-btn-toggle" id="crtToggleBtn" onclick="app.toggleCRT()" title="Toggle CRT Terminal Monitor Effect">CRT: ON</button>
-        <button class="win-btn win-btn-toggle" id="themeToggleBtn" onclick="app.toggleTheme()" title="Toggle Color Palette">THEME</button>
-        <button class="win-btn" onclick="app.openHelpModal()">?</button>
-        <button class="win-btn" onclick="app.refreshAll()">_</button>
-        <button class="win-btn">□</button>
-        <button class="win-btn" onclick="app.closeWindow()">X</button>
+        <button class="win-btn win-btn-toggle" id="crtToggleBtn" onclick="app.toggleCRT()" title="Toggle CRT Terminal Monitor Effect" aria-label="Toggle CRT Monitor Effect">CRT: ON</button>
+        <button class="win-btn win-btn-toggle" id="themeToggleBtn" onclick="app.toggleTheme()" title="Toggle Color Palette" aria-label="Toggle Theme">THEME</button>
+        <button class="win-btn" onclick="app.openHelpModal()" title="Help & Shortcuts (?)" aria-label="Help">?</button>
+        <button class="win-btn" onclick="app.refreshAll()" title="Refresh All (_)" aria-label="Refresh">_</button>
+        <button class="win-btn" title="Maximize Window" aria-label="Maximize">□</button>
+        <button class="win-btn" onclick="app.closeWindow()" title="Close Application (X)" aria-label="Close">X</button>
       </div>
     </div>
 
@@ -45,7 +45,7 @@
       <!-- Search Input in Header -->
       <div style="display:flex; align-items:center; gap:4px;">
         <span style="color:var(--text-dark); font-weight:bold; font-size:11px;">FIND:</span>
-        <input type="text" id="searchInput" class="retro-input" style="width:180px; height:20px; font-size:11px;" placeholder="Filter... (/)" autocomplete="off">
+        <input type="text" id="searchInput" class="retro-input" style="width:180px; height:20px; font-size:11px;" placeholder="Filter... (/)" aria-label="Filter applications" autocomplete="off">
       </div>
     </div>
 
@@ -59,6 +59,7 @@
           <div class="sidebar-logo-sub">SYS UTILITY 1998</div>
         </div>
 
+        <div class="nav-category">SYSTEM</div>
         <div id="sidebarModulesTree"></div>
 
         <div class="sidebar-divider"></div>
@@ -101,8 +102,36 @@
           </div>
         </div>
 
+        <!-- VIEW 0: SECURITY AUDIT REPORT -->
+        <div id="securityView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
+          <div class="retro-panel-title">CLINUX SECURITY AUDIT REPORT</div>
+
+          <div class="terminal-box" style="padding:12px;">
+            <div style="font-size:14px; font-weight:bold; color:var(--c-terminal-green-bright); margin-bottom:8px;">
+              USER-SPACE READ-ONLY AUDIT — <span id="secUserHost">user@clinux</span>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px; border-top:1px dashed var(--c-terminal-green); padding-top:8px;">
+              <div>[!] <strong style="color:#e05252;" id="secHighCount">0 HIGH</strong></div>
+              <div>[!] <strong style="color:var(--c-warning-yellow);" id="secMediumCount">0 MEDIUM</strong></div>
+              <div>[~] <strong style="color:var(--c-warm-beige);" id="secLowCount">0 LOW</strong></div>
+              <div>[i] <strong style="color:var(--text-muted);" id="secInfoCount">0 INFO</strong></div>
+              <div>[✓] <strong style="color:var(--c-terminal-green-bright);" id="secPassedCount">0 PASSED</strong></div>
+            </div>
+          </div>
+
+          <div class="action-toolbar">
+            <button class="retro-btn retro-btn-green" onclick="app.runSecurityScan()">[ S ] SCAN NOW</button>
+            <button class="retro-btn" onclick="app.exportSecurityReport('text')">[ E ] SAVE TEXT REPORT</button>
+            <button class="retro-btn" onclick="app.exportSecurityReport('json')">[ J ] SAVE JSON REPORT</button>
+          </div>
+
+          <div id="securityFindingsList" style="display:flex; flex-direction:column; gap:10px;">
+            <!-- Populated dynamically by app.js -->
+          </div>
+        </div>
+
         <!-- VIEW 1: SYSTEM DASHBOARD -->
-        <div id="dashboardView" class="retro-panel" style="display:flex; flex-direction:column; gap:12px; margin-top:0;">
+<div id="dashboardView" class="retro-panel" style="display:flex; flex-direction:column; gap:12px; margin-top:0;">
           <div class="retro-panel-title">SYSTEM STATUS & DASHBOARD</div>
 
           <!-- ASCII Health Bar Panel -->
@@ -601,7 +630,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>INSTALL TARBALL APPLICATION</span>
-        <button class="win-btn" onclick="app.closeModal('installModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('installModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div class="form-group" style="margin-bottom:10px;">
@@ -671,7 +700,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>REGISTER EXISTING APPLICATION</span>
-        <button class="win-btn" onclick="app.closeModal('registerModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('registerModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div style="margin-bottom:10px;">
@@ -733,7 +762,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>UPDATE APPLICATION: <span id="updateAppNameHeader">App</span></span>
-        <button class="win-btn" onclick="app.closeModal('updateModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('updateModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div class="terminal-box" style="margin-bottom:10px;">
@@ -774,7 +803,7 @@
     <div class="modal-dialog">
       <div class="modal-header" style="background:#6e2020;">
         <span>UNINSTALL APPLICATION</span>
-        <button class="win-btn" onclick="app.closeModal('uninstallModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('uninstallModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <p style="margin-bottom:10px;">Confirm removal of <strong id="uninstallAppName">App</strong>?</p>
@@ -801,7 +830,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>APP CONFIGURATION</span>
-        <button class="win-btn" onclick="app.closeModal('detailsModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('detailsModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
@@ -856,7 +885,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>SELECT FILE OR DIRECTORY</span>
-        <button class="win-btn" onclick="app.closeModal('fileBrowserModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('fileBrowserModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div id="browserBreadcrumbs" style="margin-bottom:6px; font-weight:bold; color:var(--c-terminal-green);"></div>
@@ -876,7 +905,7 @@
     <div class="modal-dialog">
       <div class="modal-header" style="background:#7a5f14;">
         <span>ROOT PRIVILEGES REQUIRED</span>
-        <button class="win-btn" onclick="app.closeModal('sudoCommandModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('sudoCommandModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <p id="sudoCommandDesc" style="margin-bottom:8px;">Run this command in your terminal to clean root-protected target:</p>
@@ -921,7 +950,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>CLINUX 1.0 HELP & KEYBOARD SHORTCUTS</span>
-        <button class="win-btn" onclick="app.closeModal('helpModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('helpModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div class="terminal-box">

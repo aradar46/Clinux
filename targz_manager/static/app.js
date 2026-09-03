@@ -15,7 +15,10 @@ class ClinuxApp {
 
     // Selected Navigation Index for Keyboard Navigation
     this.selectedNavIdx = 0;
-    this.navItemKeys = ['dashboard', 'cleaner', 'storage', 'services', 'all', 'ai', 'dotfiles'];
+    this.navItemKeys = ['dashboard', 'security', 'cleaner', 'storage', 'services', 'all', 'ai', 'dotfiles'];
+
+    // Security Audit State
+    this.securityData = null;
 
     // CRT Effect
     this.crtEnabled = true;
@@ -384,6 +387,10 @@ class ClinuxApp {
     } else if (tab === 'dotfiles') {
       if (views.dotfiles) views.dotfiles.style.display = 'flex';
       this.fetchDotfilesStatus();
+    } else if (tab === 'security') {
+      const secView = document.getElementById('securityView');
+      if (secView) secView.style.display = 'flex';
+      this.runSecurityScan();
     } else {
       // Portable Apps (all, ignored, discovered)
       if (views.apps) views.apps.style.display = 'flex';
@@ -1451,6 +1458,127 @@ class ClinuxApp {
         await this.fetchAIStorage(true);
       }
     } catch (e) {}
+  }
+
+  // =========================================================================
+  // Security Audit Manager
+  // =========================================================================
+  async runSecurityScan() {
+    this.toast('Running read-only security audit...', 'info');
+    try {
+      const res = await fetch('/api/security/scan');
+      if (res.ok) {
+        const data = await res.json();
+        this.securityData = data;
+        this.renderSecurityReport();
+        this.toast('Security audit complete', 'success');
+      }
+    } catch (e) {
+      this.toast('Security audit failed: ' + e.message, 'error');
+    }
+  }
+
+  renderSecurityReport() {
+    const data = this.securityData;
+    if (!data) return;
+
+    const userHost = document.getElementById('secUserHost');
+    const high = document.getElementById('secHighCount');
+    const med = document.getElementById('secMediumCount');
+    const low = document.getElementById('secLowCount');
+    const info = document.getElementById('secInfoCount');
+    const passed = document.getElementById('secPassedCount');
+    const badge = document.getElementById('securityHighBadge');
+    const list = document.getElementById('securityFindingsList');
+
+    if (userHost) userHost.textContent = `${data.user} @ ${data.home}`;
+
+    const s = data.summary || {};
+    if (high) high.textContent = `${s.high || 0} HIGH`;
+    if (med) med.textContent = `${s.medium || 0} MEDIUM`;
+    if (low) low.textContent = `${s.low || 0} LOW`;
+    if (info) info.textContent = `${s.info || 0} INFO`;
+    if (passed) passed.textContent = `${s.passed || 0} PASSED`;
+
+    if (badge) {
+      if (s.high > 0) {
+        badge.style.display = 'inline-block';
+        badge.textContent = `${s.high} HIGH`;
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    if (!list) return;
+
+    if (!data.findings || data.findings.length === 0) {
+      list.innerHTML = `<div class="terminal-box" style="padding:16px;">No security findings.</div>`;
+      return;
+    }
+
+    const severities = ['HIGH', 'MEDIUM', 'LOW', 'INFO', 'PASSED'];
+    let html = '';
+
+    severities.forEach(sev => {
+      const items = data.findings.filter(f => f.severity === sev);
+      if (items.length === 0) return;
+
+      const titleColor = sev === 'HIGH' ? '#e05252' : (sev === 'MEDIUM' ? 'var(--c-warning-yellow)' : (sev === 'PASSED' ? 'var(--c-terminal-green-bright)' : 'var(--c-warm-beige)'));
+      const icon = sev === 'HIGH' || sev === 'MEDIUM' ? '[!]' : (sev === 'PASSED' ? '[✓]' : '[~]');
+
+      html += `
+        <div class="retro-panel" style="margin-top:0;">
+          <div class="retro-panel-title" style="color:${titleColor};">${sev} FINDINGS (${items.length})</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            ${items.map(f => `
+              <div class="terminal-box" style="padding:8px 10px;">
+                <div style="font-weight:bold; color:${titleColor}; margin-bottom:4px;">
+                  ${icon} ${this.escapeHtml(f.title.toUpperCase())}
+                </div>
+                <div style="color:var(--c-warm-beige); margin-bottom:4px; font-size:11px;">
+                  ${this.escapeHtml(f.evidence)}
+                </div>
+                ${f.risk && f.risk !== 'None.' ? `<div style="color:var(--text-muted); font-size:11px;"><strong>Risk:</strong> ${this.escapeHtml(f.risk)}</div>` : ''}
+                ${f.why_it_matters ? `<div style="color:var(--text-muted); font-size:11px;"><strong>Why:</strong> ${this.escapeHtml(f.why_it_matters)}</div>` : ''}
+                ${f.remediation ? `
+                  <div style="margin-top:6px; padding:4px 6px; background:var(--c-near-black); border:1px dashed var(--c-shadow); font-family:monospace; font-size:11px; color:var(--c-warning-yellow);">
+                    <strong>Suggested:</strong> ${this.escapeHtml(f.remediation)}
+                  </div>
+                ` : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    });
+
+    list.innerHTML = html;
+  }
+
+  async exportSecurityReport(format = 'text') {
+    this.toast(`Generating ${format.toUpperCase()} report...`, 'info');
+    try {
+      const res = await fetch('/api/security/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.content) {
+          const blob = new Blob([data.content], { type: format === 'json' ? 'application/json' : 'text/plain' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = data.filename || `clinux-security.${format === 'json' ? 'json' : 'txt'}`;
+          a.click();
+          URL.revokeObjectURL(url);
+          this.toast(`Report saved: ${data.filename}`, 'success');
+        }
+      }
+    } catch (e) {
+      this.toast('Export report failed', 'error');
+    }
   }
 
   // =========================================================================
