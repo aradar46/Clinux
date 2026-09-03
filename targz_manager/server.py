@@ -10,7 +10,7 @@ from socketserver import ThreadingMixIn
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from .db import Database, DEFAULT_DB_PATH
+from .db import Database
 from .installer import (
     Installer,
     ArchiveError,
