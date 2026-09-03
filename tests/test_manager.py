@@ -230,6 +230,55 @@ class TestTarGzManager(unittest.TestCase):
         discovered = scanner.discover_unmanaged_apps()
         self.assertTrue(isinstance(discovered, list))
 
+    def test_scanner_discover_unmanaged_apps_detailed(self):
+        from targz_manager.scanner import SystemScanner
+        scanner = SystemScanner(self.db, self.installer)
+
+        mock_desktop = [{
+            "source": "desktop_file",
+            "name": "mock-desktop-app",
+            "display_name": "Mock Desktop App",
+            "version": "1.0.0",
+            "category": "Utility",
+            "description": "Mock desktop entry",
+            "install_path": str(self.sample_app_dir),
+            "executable_path": str(self.sample_app_dir / "bin" / "sampleapp"),
+            "icon_path": None,
+            "terminal": False,
+            "discovery_reason": "From desktop shortcut"
+        }]
+
+        downloads_dir = Path.home() / "Downloads"
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+        test_tarball = downloads_dir / "unittest-mock-app-1.2.3.tar.gz"
+        test_tarball.write_bytes(b"mock archive data")
+
+        try:
+            with mock.patch.object(scanner, 'scan_desktop_entries', return_value=mock_desktop), \
+                 mock.patch.object(scanner, 'get_search_roots', return_value=[self.temp_dir]):
+
+                # Add an ignored discovery in DB to test _annotate_ignored_status
+                ignored_key = str(self.sample_app_dir.resolve())
+                self.db.ignore_discovery(ignored_key, "unittest ignore")
+
+                discovered = scanner.discover_unmanaged_apps()
+
+                desktop_items = [d for d in discovered if d.get("source") == "desktop_file" and d.get("name") == "mock-desktop-app"]
+                self.assertEqual(len(desktop_items), 1)
+                self.assertTrue(desktop_items[0]["ignored"])
+                self.assertEqual(desktop_items[0]["ignore_key"], ignored_key)
+
+                dir_items = [d for d in discovered if d.get("source") == "directory_scan"]
+                self.assertTrue(len(dir_items) >= 1)
+
+                tarball_items = [d for d in discovered if d.get("source") == "archive_file" and d.get("name") == "unittest-mock-app"]
+                self.assertEqual(len(tarball_items), 1)
+                self.assertEqual(tarball_items[0]["version"], "1.2.3")
+                self.assertFalse(tarball_items[0]["ignored"])
+        finally:
+            if test_tarball.exists():
+                test_tarball.unlink()
+
 
 class TestHttpServerApi(unittest.TestCase):
     @classmethod
