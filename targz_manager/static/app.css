@@ -38,25 +38,90 @@
   --font-mono: 'JetBrains Mono', 'Fixedsys', 'Terminus', 'VT323', ui-monospace, monospace;
 }
 
-/* Light Theme alternative within 1990s Linux UI palette */
-[data-theme="light"] {
-  --bg-main: #2b2924;
-  --bg-window: #d8d0b8;
-  --bg-panel: #eae6d8;
-  --bg-panel-alt: #ded8c4;
-  --bg-input: #ffffff;
-  --bg-selected: #aaa58f;
-  --bg-highlight: #1d3a2a;
+/* Theme Alternatives */
+[data-theme="amber-crt"] {
+  --c-dark-green: #3d2a00;
+  --c-terminal-green: #ffb000;
+  --c-terminal-green-bright: #ffd000;
+  --c-warm-beige: #ffebbc;
+  --c-bezel-gray: #8f7d58;
+  --c-shadow: #584a2f;
 
-  --text-main: #101010;
-  --text-green: #1d3a2a;
-  --text-green-bright: #1d3a2a;
-  --text-yellow: #9e7300;
-  --text-dark: #101010;
-  --text-muted: #5e594d;
+  --bg-panel: #141005;
+  --bg-panel-alt: #1e1808;
+  --bg-input: #0d0a00;
 
-  --border-light: #ffffff;
-  --border-shadow: #8c8775;
+  --text-main: #ffebbc;
+  --text-green: #ffb000;
+  --text-green-bright: #ffd000;
+}
+
+[data-theme="midnight"] {
+  --c-dark-green: #112233;
+  --c-terminal-green: #4fa3d8;
+  --c-terminal-green-bright: #70c5fc;
+  --c-warm-beige: #d0e0f0;
+  --c-bezel-gray: #68788c;
+  --c-shadow: #38485c;
+
+  --bg-panel: #0a1018;
+  --bg-panel-alt: #101824;
+  --bg-input: #050a10;
+
+  --text-main: #d0e0f0;
+  --text-green: #4fa3d8;
+  --text-green-bright: #70c5fc;
+}
+
+[data-theme="high-contrast"] {
+  --c-dark-green: #000000;
+  --c-terminal-green: #ffffff;
+  --c-terminal-green-bright: #ffffff;
+  --c-warm-beige: #ffffff;
+  --c-bezel-gray: #888888;
+  --c-shadow: #444444;
+
+  --bg-main: #000000;
+  --bg-window: #000000;
+  --bg-panel: #000000;
+  --bg-panel-alt: #111111;
+  --bg-input: #000000;
+
+  --text-main: #ffffff;
+  --text-green: #ffffff;
+  --text-green-bright: #ffffff;
+  --text-muted: #aaaaaa;
+}
+
+[data-theme="monochrome"] {
+  --c-dark-green: #003300;
+  --c-terminal-green: #00ff00;
+  --c-terminal-green-bright: #33ff33;
+  --c-warm-beige: #ccffcc;
+  --c-bezel-gray: #006600;
+  --c-shadow: #002200;
+
+  --bg-main: #001100;
+  --bg-window: #002200;
+  --bg-panel: #000500;
+  --bg-panel-alt: #000a00;
+  --bg-input: #000000;
+
+  --text-main: #00ff00;
+  --text-green: #00ff00;
+  --text-green-bright: #33ff33;
+}
+
+body.font-bitmap {
+  --font-mono: 'Fixedsys', 'Terminus', 'JetBrains Mono', monospace;
+}
+
+body.font-jetbrains {
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+body.font-monospace {
+  --font-mono: monospace;
 }
 
 * {

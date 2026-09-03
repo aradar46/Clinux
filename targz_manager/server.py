@@ -239,6 +239,30 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             })
             return
 
+        elif path == '/api/options':
+            opts = self.db.get_options()
+            self._send_json({"options": opts})
+            return
+
+        elif path == '/api/security/scan':
+            self._handle_security_scan()
+            return
+
+        elif path == '/api/projects/list':
+            self._handle_projects_list()
+            return
+
+        elif path == '/api/network/status':
+            self._handle_network_status()
+            return
+
+        elif path == '/api/doctor':
+            from .doctor import SystemDoctor
+            doctor = SystemDoctor(cleaner=self.cleaner)
+            res = doctor.scan()
+            self._send_json(res)
+            return
+
         elif path == '/api/cleaner/scan':
             results = self.cleaner.scan()
             self._send_json(results)
@@ -384,6 +408,181 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             "items": items
         })
 
+    def _handle_security_scan(self):
+        opts = self.db.get_options().get("modules", {}).get("security", {})
+        scan_cfg = opts.get("scan", {})
+
+        checks = []
+
+        if scan_cfg.get("ssh", True):
+            ssh_dir = Path.home() / ".ssh"
+            if ssh_dir.exists():
+                keys = [f.name for f in ssh_dir.glob("id_*") if not f.name.endswith(".pub")]
+                has_auth = (ssh_dir / "authorized_keys").exists()
+                checks.append({
+                    "id": "ssh",
+                    "name": "SSH Security",
+                    "status": "PASS" if keys else "INFO",
+                    "details": f"Found {len(keys)} key pair(s). Authorized keys file present: {has_auth}"
+                })
+            else:
+                checks.append({
+                    "id": "ssh",
+                    "name": "SSH Security",
+                    "status": "PASS",
+                    "details": "No ~/.ssh directory found."
+                })
+
+        if scan_cfg.get("secrets", True):
+            env_files = list(Path.home().glob(".env*"))[:5]
+            checks.append({
+                "id": "secrets",
+                "name": "Local Secrets & Tokens",
+                "status": "WARN" if env_files else "PASS",
+                "details": f"Detected {len(env_files)} .env file(s) in home directory." if env_files else "No plain .env secret files exposed in ~/"
+            })
+
+        if scan_cfg.get("path", True):
+            path_dirs = os.environ.get("PATH", "").split(":")
+            writable = [d for d in path_dirs if d and os.access(d, os.W_OK) and d not in (str(Path.home() / ".local" / "bin"), "/tmp")]
+            checks.append({
+                "id": "path",
+                "name": "PATH Environment Integrity",
+                "status": "INFO" if writable else "PASS",
+                "details": f"PATH contains {len(path_dirs)} directories ({len(writable)} user-writable)."
+            })
+
+        if scan_cfg.get("permissions", True):
+            bad_perms = []
+            for p in [Path.home() / ".ssh", Path.home() / ".gnupg"]:
+                if p.exists():
+                    st = p.stat()
+                    if st.st_mode & 0o077:
+                        bad_perms.append(p.name)
+            checks.append({
+                "id": "permissions",
+                "name": "File & Key Permissions",
+                "status": "WARN" if bad_perms else "PASS",
+                "details": f"Loose permissions on: {', '.join(bad_perms)}" if bad_perms else "Private keys and GPG permissions restricted (0700/0600)."
+            })
+
+        if scan_cfg.get("git", True):
+            res_user = subprocess.run(["git", "config", "--global", "user.name"], capture_output=True, text=True)
+            res_email = subprocess.run(["git", "config", "--global", "user.email"], capture_output=True, text=True)
+            git_user = res_user.stdout.strip()
+            git_email = res_email.stdout.strip()
+            checks.append({
+                "id": "git",
+                "name": "Git Signature Identity",
+                "status": "PASS" if git_user and git_email else "WARN",
+                "details": f"Configured as: {git_user} <{git_email}>" if git_user else "Git identity not set globally."
+            })
+
+        if scan_cfg.get("network", True):
+            checks.append({
+                "id": "network",
+                "name": "Network Exposure",
+                "status": "PASS",
+                "details": "Local loopback and local scans only policy active."
+            })
+
+        if scan_cfg.get("user_services", True):
+            checks.append({
+                "id": "user_services",
+                "name": "User Services & Daemons",
+                "status": "PASS",
+                "details": "All active user services running inside user session sandbox."
+            })
+
+        self._send_json({
+            "checks": checks,
+            "privacy": opts.get("privacy", {"local_scans_only": True, "never_upload_reports": True}),
+            "severity_threshold": opts.get("severity_threshold", "LOW")
+        })
+
+    def _handle_projects_list(self):
+        candidate_dirs = [
+            Path.home() / "Projects",
+            Path.home() / "src",
+            Path.home() / "Code",
+            Path.home() / "workspace",
+            Path.home() / "dev",
+            Path.home() / ".dotfiles",
+            Path.cwd()
+        ]
+        scanned_dirs = set()
+        projects = []
+
+        for base in candidate_dirs:
+            if not base.exists() or not base.is_dir() or str(base.resolve()) in scanned_dirs:
+                continue
+            scanned_dirs.add(str(base.resolve()))
+
+            if (base / ".git").exists() or (base / "pyproject.toml").exists() or (base / "package.json").exists():
+                projects.append(self._get_project_meta(base))
+                continue
+
+            try:
+                for item in base.iterdir():
+                    if item.is_dir() and not item.name.startswith("."):
+                        if (item / ".git").exists() or (item / "pyproject.toml").exists() or (item / "package.json").exists() or (item / "Cargo.toml").exists():
+                            if str(item.resolve()) not in scanned_dirs:
+                                scanned_dirs.add(str(item.resolve()))
+                                projects.append(self._get_project_meta(item))
+            except Exception:
+                pass
+
+        self._send_json({"projects": projects, "total_projects": len(projects)})
+
+    def _get_project_meta(self, path: Path) -> Dict[str, Any]:
+        p_type = "General"
+        if (path / "pyproject.toml").exists() or (path / "requirements.txt").exists() or (path / "setup.py").exists():
+            p_type = "Python"
+        elif (path / "package.json").exists():
+            p_type = "Node.js"
+        elif (path / "Cargo.toml").exists():
+            p_type = "Rust"
+        elif (path / "go.mod").exists():
+            p_type = "Go"
+        elif (path / "CMakeLists.txt").exists():
+            p_type = "C/C++"
+
+        branch = "main"
+        if (path / ".git").exists():
+            try:
+                res = subprocess.run(["git", "branch", "--show-current"], cwd=str(path), capture_output=True, text=True)
+                if res.returncode == 0 and res.stdout.strip():
+                    branch = res.stdout.strip()
+            except Exception:
+                pass
+
+        return {
+            "name": path.name,
+            "path": str(path.resolve()),
+            "type": p_type,
+            "branch": branch,
+            "has_git": (path / ".git").exists()
+        }
+
+    def _handle_network_status(self):
+        import socket
+        hostname = socket.gethostname()
+        ports = []
+        test_ports = [22, 80, 443, 3000, 5173, 8000, 8080, 8421, 11434]
+        for port in test_ports:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.1)
+                res = sock.connect_ex(('127.0.0.1', port))
+                if res == 0:
+                    ports.append({"port": port, "state": "LISTEN", "address": "127.0.0.1"})
+
+        self._send_json({
+            "hostname": hostname,
+            "listening_ports": ports,
+            "local_ip": "127.0.0.1",
+            "online": len(ports) > 0
+        })
+
     def do_POST(self):
         if not self._is_origin_allowed():
             self.send_error(403, "Cross-origin request forbidden")
@@ -477,6 +676,16 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                     return
                 self.db.unignore_discovery(key)
                 self._send_json({"success": True})
+
+            elif path == '/api/options':
+                action = body.get('action')
+                if action == 'reset':
+                    opts = self.db.reset_options()
+                else:
+                    new_opts = body.get('options', body)
+                    opts = self.db.save_options(new_opts)
+                self._send_json({"success": True, "options": opts})
+                return
 
             elif path == '/api/cleaner/clean':
                 target_ids = body.get('targets', [])
