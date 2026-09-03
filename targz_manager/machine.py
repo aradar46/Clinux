@@ -99,13 +99,16 @@ class MachineManager:
 
         return result
 
-    def export_machine(self, output_path: str):
-        # 1. Dotfiles
+    def _collect_dotfiles_info(self) -> Dict[str, Any]:
         dotfiles_status = self.dm.get_status()
         stowed_packages = [p['name'] for p in dotfiles_status.get('packages', []) if p.get('stowed')]
         repo_path = dotfiles_status.get('repo_path', '')
+        return {
+            "repo_path": repo_path,
+            "stowed_packages": stowed_packages,
+        }
 
-        # 2. Git config
+    def _collect_git_config(self) -> Dict[str, str]:
         git_config = {}
         try:
             res = subprocess.run(["git", "config", "--global", "-l"], capture_output=True, text=True)
@@ -115,8 +118,9 @@ class MachineManager:
                     git_config[k.strip()] = v.strip()
         except Exception:
             pass
+        return git_config
 
-        # 3. Installed packages
+    def _collect_package_info(self) -> Dict[str, List[str]]:
         apt_packages = []
         try:
             res = subprocess.run(["apt-mark", "showmanual"], capture_output=True, text=True)
@@ -133,7 +137,12 @@ class MachineManager:
         except Exception:
             pass
 
-        # 4. Portable apps
+        return {
+            "apt": apt_packages,
+            "pacman": pacman_packages,
+        }
+
+    def _collect_portable_apps(self) -> List[Dict[str, str]]:
         portable_apps = self.db.list_apps()
         apps_data = []
         for app in portable_apps:
@@ -142,8 +151,9 @@ class MachineManager:
                 "display_name": app.get("display_name", ""),
                 "version": app.get("version", ""),
             })
+        return apps_data
 
-        # 5. Python versions
+    def _collect_python_versions(self) -> List[str]:
         python_versions = []
         try:
             res = subprocess.run(["pyenv", "versions", "--bare"], capture_output=True, text=True)
@@ -160,7 +170,9 @@ class MachineManager:
             except Exception:
                 pass
 
-        # 6. Node versions
+        return python_versions
+
+    def _collect_node_versions(self) -> List[str]:
         node_versions = []
         try:
             res = subprocess.run(["node", "--version"], capture_output=True, text=True)
@@ -168,12 +180,13 @@ class MachineManager:
                 node_versions = [res.stdout.strip()]
         except Exception:
             pass
+        return node_versions
 
-        # 7. AI skills
+    def _collect_ai_skills(self) -> List[str]:
         skills = self.sm.get_all_skills()
-        active_skills = [s['name'] for s in skills if s.get('active')]
+        return [s['name'] for s in skills if s.get('active')]
 
-        # 8. GNOME settings
+    def _collect_gnome_settings(self) -> str:
         gnome_settings = ""
         try:
             res = subprocess.run(["dconf", "dump", "/"], capture_output=True, text=True)
@@ -181,24 +194,33 @@ class MachineManager:
                 gnome_settings = res.stdout
         except Exception:
             pass
+        return gnome_settings
 
-        # Generate TOML
+    def _format_manifest_toml(self, data: Dict[str, Any]) -> str:
         lines = []
 
         def fmt_str(v):
             v = str(v).replace("\\", "\\\\").replace('"', '\\"')
             return f'"{v}"'
 
+        dotfiles = data.get("dotfiles", {})
+        repo_path = dotfiles.get("repo_path", "")
+        stowed_packages = dotfiles.get("stowed_packages", [])
+
         lines.append("[dotfiles]")
         lines.append(f"repo = {fmt_str(repo_path)}")
         lines.append(f"packages = {repr(stowed_packages)}")
         lines.append("")
 
+        git_config = data.get("git_config", {})
         lines.append("[git_config]")
         for k, v in git_config.items():
             lines.append(f'"{k}" = {fmt_str(v)}')
         lines.append("")
 
+        packages = data.get("packages", {})
+        apt_packages = packages.get("apt", [])
+        pacman_packages = packages.get("pacman", [])
         lines.append("[packages]")
         if apt_packages:
             lines.append(f"apt = {repr(apt_packages)}")
@@ -206,34 +228,54 @@ class MachineManager:
             lines.append(f"pacman = {repr(pacman_packages)}")
         lines.append("")
 
+        apps_data = data.get("portable_apps", [])
         if apps_data:
             for app in apps_data:
                 lines.append("[[portable_apps]]")
-                lines.append(f'name = {fmt_str(app["name"])}')
-                lines.append(f'display_name = {fmt_str(app["display_name"])}')
-                lines.append(f'version = {fmt_str(app["version"])}')
+                lines.append(f'name = {fmt_str(app.get("name", ""))}')
+                lines.append(f'display_name = {fmt_str(app.get("display_name", ""))}')
+                lines.append(f'version = {fmt_str(app.get("version", ""))}')
                 lines.append("")
 
+        python_versions = data.get("python", {}).get("versions", [])
         lines.append("[python]")
         lines.append(f"versions = {repr(python_versions)}")
         lines.append("")
 
+        node_versions = data.get("node", {}).get("versions", [])
         lines.append("[node]")
         lines.append(f"versions = {repr(node_versions)}")
         lines.append("")
 
+        active_skills = data.get("ai_skills", {}).get("active", [])
         lines.append("[ai_skills]")
         lines.append(f"active = {repr(active_skills)}")
         lines.append("")
 
+        gnome_settings = data.get("gnome_settings", {}).get("dconf", "")
         lines.append("[gnome_settings]")
         if gnome_settings:
             lines.append(f'dconf = """\n{gnome_settings}\n"""')
         else:
             lines.append('dconf = ""')
 
+        return "\n".join(lines)
+
+    def export_machine(self, output_path: str) -> str:
+        manifest_data = {
+            "dotfiles": self._collect_dotfiles_info(),
+            "git_config": self._collect_git_config(),
+            "packages": self._collect_package_info(),
+            "portable_apps": self._collect_portable_apps(),
+            "python": {"versions": self._collect_python_versions()},
+            "node": {"versions": self._collect_node_versions()},
+            "ai_skills": {"active": self._collect_ai_skills()},
+            "gnome_settings": {"dconf": self._collect_gnome_settings()},
+        }
+
+        toml_content = self._format_manifest_toml(manifest_data)
         with open(output_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
+            f.write(toml_content)
 
         return output_path
 
