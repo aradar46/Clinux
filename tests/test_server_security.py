@@ -21,7 +21,8 @@ class TestSecurityServerEndpoints(unittest.TestCase):
         with urllib.request.urlopen(req) as resp:
             self.assertEqual(resp.status, 200)
             data = json.loads(resp.read().decode("utf-8"))
-            self.assertIn("checks", data)
+            self.assertIn("findings", data)
+            self.assertIn("summary", data)
 
     def test_security_export_api(self):
         url = "http://127.0.0.1:8912/api/security/export"
