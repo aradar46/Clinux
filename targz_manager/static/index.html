@@ -344,83 +344,10 @@
           </div>
         </div>
 
-        <!-- VIEW 6: SERVICES PANEL -->
-        <div id="servicesView" class="retro-panel" style="display:none; margin-top:0;">
-          <div class="retro-panel-title">SYSTEM SERVICES & RUNTIMES</div>
-          <table class="retro-table">
-            <thead>
-              <tr>
-                <th>SERVICE</th>
-                <th>STATE</th>
-                <th>BOOT</th>
-                <th>PORT / PID</th>
-                <th>ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="selected">
-                <td>docker.service</td>
-                <td><span style="color:var(--c-terminal-green-bright);">RUNNING</span></td>
-                <td>ENABLED</td>
-                <td>PID 1248</td>
-                <td>[STOP] [RESTART]</td>
-              </tr>
-              <tr>
-                <td>ollama.service</td>
-                <td><span style="color:var(--c-terminal-green-bright);">RUNNING</span></td>
-                <td>ENABLED</td>
-                <td>11434 / PID 3412</td>
-                <td>[STOP] [RESTART]</td>
-              </tr>
-              <tr>
-                <td>bluetooth.service</td>
-                <td><span style="color:var(--text-muted);">STOPPED</span></td>
-                <td>DISABLED</td>
-                <td>-</td>
-                <td>[START] [ENABLE]</td>
-              </tr>
-              <tr>
-                <td>cups.service</td>
-                <td><span style="color:var(--c-terminal-green-bright);">RUNNING</span></td>
-                <td>ENABLED</td>
-                <td>631 / PID 891</td>
-                <td>[STOP] [RESTART]</td>
-              </tr>
-              <tr>
-                <td>ssh.service</td>
-                <td><span style="color:var(--c-terminal-green-bright);">RUNNING</span></td>
-                <td>ENABLED</td>
-                <td>22 / PID 780</td>
-                <td>[STOP] [RESTART]</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
 
         <!-- VIEW 7: OPTIONS CONTROL PANEL -->
         <div id="optionsView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
           <div class="retro-panel-title">CLINUX OPTIONS CONTROL PANEL</div>
-
-          <!-- TAB CONFIGURATION -->
-          <div class="retro-panel" style="margin-top:0;">
-            <div class="retro-panel-title">TAB CONFIGURATION</div>
-            <div style="font-weight:bold; margin-bottom:6px; font-size:11px; color:var(--c-terminal-green-bright);">VISIBLE TABS</div>
-
-            <div id="optionsTabsList" class="terminal-box" style="display:flex; flex-direction:column; gap:4px; max-height:220px; overflow-y:auto; padding:6px;">
-              <!-- Populated dynamically by app.js -->
-            </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; font-size:11px; color:var(--text-muted);">
-              <div>
-                <span class="key-hint">↑</span> <span class="key-hint">↓</span> Move &nbsp;&nbsp;
-                <span class="key-hint">SPACE</span> Toggle &nbsp;&nbsp;
-                <span class="key-hint">ENTER</span> Edit
-              </div>
-              <div>
-                Visible tabs: <strong style="color:var(--c-warm-beige);"><span id="optionsVisibleCount">7</span> / <span id="optionsTotalCount">10</span></strong>
-              </div>
-            </div>
-          </div>
 
           <!-- APPEARANCE -->
           <div class="retro-panel" style="margin-top:0;">

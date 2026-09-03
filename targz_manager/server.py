@@ -246,9 +246,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"options": opts})
             return
 
-        elif path == '/api/security/scan':
-            self._handle_security_scan()
-            return
 
         elif path == '/api/projects/list':
             self._handle_projects_list()
