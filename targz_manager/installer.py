@@ -4,12 +4,12 @@ import stat
 import shutil
 import tarfile
 import zipfile
+import tempfile
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
 from .db import Database
-from .utils import compute_directory_size
 
 DEFAULT_OPT_DIR = Path.home() / ".local" / "opt"
 DEFAULT_BIN_DIR = Path.home() / ".local" / "bin"
@@ -81,19 +81,6 @@ class Installer:
                 return True
             raise ArchiveError(f"Root permission required. Authentication failed: {res.stderr.strip() or 'Cancelled'}")
         raise ArchiveError(f"Root permission required to install/move to {dst_p}. Run in terminal: sudo mv \"{src_p}\" \"{dst_p}\"")
-
-    @staticmethod
-    def ensure_executable(path: Any) -> bool:
-        """Ensure file at path has executable permission bits set (u+x, g+x, o+x)"""
-        try:
-            p = Path(path)
-            if p.exists():
-                st = p.stat()
-                p.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-                return True
-        except Exception:
-            pass
-        return False
 
     @staticmethod
     def slugify(text: str) -> str:
@@ -542,7 +529,13 @@ class Installer:
         if link_path.is_symlink() or link_path.exists():
             link_path.unlink()
 
-        self.ensure_executable(exec_path)
+        try:
+            target = Path(exec_path)
+            if target.exists():
+                st = target.stat()
+                target.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        except Exception:
+            pass
 
         os.symlink(exec_path, str(link_path))
         return str(link_path)
@@ -599,7 +592,11 @@ class Installer:
         if not exec_full.exists():
             raise ArchiveError(f"Specified executable does not exist: {exec_full}")
 
-        self.ensure_executable(exec_full)
+        try:
+            st = exec_full.stat()
+            exec_full.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        except Exception:
+            pass
 
         icon_full_str = None
         if icon_rel_path:
@@ -611,8 +608,7 @@ class Installer:
             if candidates["icons"]:
                 icon_full_str = candidates["icons"][0]["full_path"]
 
-        # Fast directory size calculation using os.scandir (avoiding slow Path.rglob)
-        calc_size = compute_directory_size(target_dir)
+        calc_size = sum(f.stat().st_size for f in target_dir.rglob('*') if f.is_file() and not f.is_symlink())
 
         disp_name = display_name or slug.replace('-', ' ').title()
         ver = version or "1.0.0"
@@ -679,7 +675,11 @@ class Installer:
         if not exec_full.exists():
             raise ArchiveError(f"Executable does not exist: {exec_full}")
 
-        self.ensure_executable(exec_full)
+        try:
+            st = exec_full.stat()
+            exec_full.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        except Exception:
+            pass
 
         icon_full_str = str(Path(icon_path).resolve()) if icon_path and Path(icon_path).exists() else None
         if not icon_full_str:
@@ -687,8 +687,11 @@ class Installer:
             if candidates["icons"]:
                 icon_full_str = candidates["icons"][0]["full_path"]
 
-        # Fast directory size calculation using os.scandir (avoiding slow Path.rglob)
-        calc_size = compute_directory_size(target_dir)
+        calc_size = 0
+        try:
+            calc_size = sum(f.stat().st_size for f in target_dir.rglob('*') if f.is_file() and not f.is_symlink())
+        except Exception:
+            pass
 
         disp_name = display_name or slug.replace('-', ' ').title()
 
@@ -778,7 +781,8 @@ class Installer:
             if not new_exec_path or not new_exec_path.exists():
                 raise ArchiveError("Could not locate executable in the new archive version.")
 
-            self.ensure_executable(new_exec_path)
+            st = new_exec_path.stat()
+            new_exec_path.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
             rel_exec = new_exec_path.relative_to(staging_dir)
             final_exec_path = install_path / rel_exec
@@ -820,8 +824,11 @@ class Installer:
         if symlink_path:
             symlink_path = self.create_symlink(str(final_exec_path), app["name"])
 
-        # Fast directory size calculation using os.scandir (avoiding slow Path.rglob)
-        calc_size = compute_directory_size(install_path)
+        calc_size = 0
+        try:
+            calc_size = sum(f.stat().st_size for f in install_path.rglob('*') if f.is_file() and not f.is_symlink())
+        except Exception:
+            pass
 
         ver = new_version
         if not ver:
@@ -891,7 +898,11 @@ class Installer:
         if not exec_path.exists():
             raise ArchiveError(f"Executable not found at: {exec_path}")
 
-        self.ensure_executable(exec_path)
+        try:
+            st = exec_path.stat()
+            exec_path.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        except Exception:
+            pass
 
         working_dir = Path(app["install_path"])
         if not working_dir.exists():

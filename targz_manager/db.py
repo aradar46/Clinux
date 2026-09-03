@@ -5,7 +5,6 @@ import datetime
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Dict, Optional, Any
-from .utils import compute_directory_size
 
 DEFAULT_DB_DIR = Path.home() / ".local" / "share" / "clinux"
 DEFAULT_DB_PATH = DEFAULT_DB_DIR / "apps.db"
@@ -308,7 +307,7 @@ class Database:
         values = []
         for k, v in updates.items():
             if k in allowed_fields:
-                fields.append(f'"{k}" = ?')
+                fields.append(f"{k} = ?")
                 if k in ("terminal", "ignored"):
                     values.append(1 if v else 0)
                 else:
@@ -318,7 +317,7 @@ class Database:
             return False
 
         if "updated_at" not in updates:
-            fields.append('"updated_at" = ?')
+            fields.append("updated_at = ?")
             values.append(datetime.datetime.now().isoformat())
 
         values.append(app_id)
@@ -412,8 +411,7 @@ class Database:
         current_size = data.get("size_bytes", 0)
         if install_exists:
             try:
-                # Fast directory size calculation using os.scandir (avoiding slow Path.rglob)
-                calc_size = compute_directory_size(install_path)
+                calc_size = sum(f.stat().st_size for f in install_path.rglob('*') if f.is_file() and not f.is_symlink())
                 if calc_size > 0:
                     current_size = calc_size
             except Exception:
