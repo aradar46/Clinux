@@ -131,6 +131,10 @@ body.font-monospace {
   user-select: none;
 }
 
+input, textarea, select, pre, code, .terminal-box, .retro-table, p, label, .modal-body, .window-viewport {
+  user-select: text;
+}
+
 body {
   font-family: var(--font-mono);
   background-color: var(--bg-main);

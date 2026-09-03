@@ -229,6 +229,32 @@ class ClinuxApp {
 
   async refreshDashboardStats() {
     try {
+      const statsRes = await fetch('/api/stats');
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        const disk = statsData.stats?.disk;
+        if (disk) {
+          const healthEl = document.getElementById('dashHealthTitle');
+          if (healthEl && disk.health_display_str) {
+            healthEl.innerText = disk.health_display_str;
+          }
+          const diskEl = document.getElementById('dashDiskUsageStr');
+          if (diskEl) {
+            diskEl.innerText = `${disk.used_formatted} / ${disk.total_formatted} (${disk.usage_percent}%)`;
+          }
+        }
+      }
+
+      const servicesRes = await fetch('/api/services');
+      if (servicesRes.ok) {
+        const servData = await servicesRes.json();
+        const servEl = document.getElementById('dashServicesStr');
+        if (servEl && servData.services) {
+          const activeCount = servData.services.filter(s => s.active || s.sub === 'running' || s.active_state === 'active').length;
+          servEl.innerText = `${activeCount} active`;
+        }
+      }
+
       const storageRes = await fetch('/api/ai/storage');
       if (storageRes.ok) {
         const sData = await storageRes.json();
@@ -377,7 +403,8 @@ class ClinuxApp {
       if (views.doctor) views.doctor.style.display = 'flex';
       this.fetchDoctorDiagnosis();
     } else if (tab === 'services') {
-      if (views.services) views.services.style.display = 'block';
+      if (views.services) views.services.style.display = 'flex';
+      this.fetchServicesList();
     } else if (tab === 'storage') {
       if (views.ai) views.ai.style.display = 'flex';
       this.setAISubTab('storage');
@@ -1283,27 +1310,27 @@ class ClinuxApp {
       html += `
         <div class="retro-panel" style="margin-top:0; margin-bottom:10px;">
           <div class="retro-panel-title">${this.escapeHtml(catName)}</div>
-          <table class="retro-table">
+          <table class="retro-table" style="table-layout: fixed; width: 100%;">
             <thead>
               <tr>
-                <th style="width:24px;">ST</th>
-                <th>SKILL NAME</th>
+                <th style="width:36px; text-align:center;">ST</th>
+                <th style="width:220px;">SKILL NAME</th>
                 <th>DESCRIPTION</th>
-                <th style="width:90px;">STATUS</th>
-                <th style="width:80px;">ACTION</th>
+                <th style="width:100px; text-align:center;">STATUS</th>
+                <th style="width:90px; text-align:center;">ACTION</th>
               </tr>
             </thead>
             <tbody>
               ${skillList.map(skill => `
-                <tr class="${skill.active ? 'selected' : ''}">
+                <tr class="${skill.active ? 'selected' : ''}" style="cursor:pointer;" onclick="if(event.target.tagName !== 'BUTTON' && event.target.tagName !== 'INPUT') app.toggleSkill('${this.escapeHtml(skill.key)}', ${!skill.active})">
                   <td style="color:${skill.active ? 'var(--c-terminal-green-bright)' : 'var(--text-muted)'}; text-align:center;">
                     ${skill.active ? '●' : '○'}
                   </td>
-                  <td><strong style="color:${skill.active ? 'var(--c-terminal-green-bright)' : 'var(--c-warm-beige)'};">${this.escapeHtml(skill.display_name || skill.name)}</strong></td>
-                  <td style="font-size:11px; color:var(--text-muted);">${this.escapeHtml(skill.description || '')}</td>
-                  <td><strong style="color:${skill.active ? 'var(--c-terminal-green-bright)' : 'var(--text-muted)'};">${skill.active ? 'ENABLED' : 'DISABLED'}</strong></td>
-                  <td>
-                    <button class="retro-btn ${skill.active ? '' : 'retro-btn-green'}" onclick="app.toggleSkill('${this.escapeHtml(skill.key)}', ${!skill.active})">
+                  <td style="white-space: normal; word-break: break-word;"><strong style="color:${skill.active ? 'var(--c-terminal-green-bright)' : 'var(--c-warm-beige)'};">${this.escapeHtml(skill.display_name || skill.name)}</strong></td>
+                  <td style="font-size:11px; color:var(--text-muted); white-space: normal; word-break: break-word;">${this.escapeHtml(skill.description || '')}</td>
+                  <td style="text-align:center;"><strong style="color:${skill.active ? 'var(--c-terminal-green-bright)' : 'var(--text-muted)'};">${skill.active ? 'ENABLED' : 'DISABLED'}</strong></td>
+                  <td style="text-align:center;">
+                    <button class="retro-btn ${skill.active ? '' : 'retro-btn-green'}" onclick="event.stopPropagation(); app.toggleSkill('${this.escapeHtml(skill.key)}', ${!skill.active})">
                       ${skill.active ? '[ OFF ]' : '[ ON ]'}
                     </button>
                   </td>
@@ -2155,6 +2182,91 @@ class ClinuxApp {
       box.textContent = html;
     } catch (e) {
       box.textContent = 'Error running System Doctor diagnostics.';
+    }
+  }
+
+  async fetchServicesList() {
+    const container = document.getElementById('servicesTableContainer');
+    if (!container) return;
+    container.innerHTML = '<div class="terminal-box">Querying systemd services...</div>';
+    try {
+      const res = await fetch('/api/services');
+      const data = await res.json();
+      this.servicesData = data.services || [];
+      this.renderServicesTable();
+    } catch (e) {
+      container.innerHTML = '<div class="terminal-box terminal-line-err">Error fetching service list.</div>';
+    }
+  }
+
+  renderServicesTable() {
+    const container = document.getElementById('servicesTableContainer');
+    if (!container) return;
+    if (!this.servicesData || this.servicesData.length === 0) {
+      container.innerHTML = '<div class="terminal-box">No services found.</div>';
+      return;
+    }
+
+    let html = `
+      <table class="retro-table">
+        <thead>
+          <tr>
+            <th>SERVICE</th>
+            <th>STATE</th>
+            <th>BOOT</th>
+            <th>PORT / PID</th>
+            <th>ACTIONS</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${this.servicesData.map(s => {
+            const isRunning = s.active || s.state === 'ACTIVE' || s.state === 'RUNNING';
+            const stateColor = isRunning ? 'var(--c-terminal-green-bright)' : 'var(--text-muted)';
+            return `
+              <tr class="${isRunning ? 'selected' : ''}">
+                <td><strong>${this.escapeHtml(s.name)}</strong></td>
+                <td><span style="color:${stateColor}; font-weight:bold;">${this.escapeHtml(s.state)}</span></td>
+                <td>${this.escapeHtml(s.boot)}</td>
+                <td>${this.escapeHtml(s.pid_port || '-')}</td>
+                <td>
+                  <div style="display:flex; gap:4px;">
+                    ${isRunning ?
+                      `<button class="retro-btn retro-btn-danger" onclick="app.controlService('${this.escapeHtml(s.name)}', 'stop')">STOP</button>
+                       <button class="retro-btn" onclick="app.controlService('${this.escapeHtml(s.name)}', 'restart')">RESTART</button>` :
+                      `<button class="retro-btn retro-btn-green" onclick="app.controlService('${this.escapeHtml(s.name)}', 'start')">START</button>`
+                    }
+                    ${s.boot === 'ENABLED' ?
+                      `<button class="retro-btn" onclick="app.controlService('${this.escapeHtml(s.name)}', 'disable')">DISABLE</button>` :
+                      `<button class="retro-btn" onclick="app.controlService('${this.escapeHtml(s.name)}', 'enable')">ENABLE</button>`
+                    }
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+    container.innerHTML = html;
+  }
+
+  async controlService(serviceName, action) {
+    this.toast(`${action.toUpperCase()}ing service ${serviceName}...`, 'info');
+    try {
+      const res = await fetch('/api/services/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service: serviceName, action: action })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        this.toast(`Service ${serviceName} ${action}ed successfully!`, 'success');
+        await this.fetchServicesList();
+      } else {
+        this.toast(data.error || `Failed to ${action} service`, 'error');
+      }
+    } catch (e) {
+      this.toast(`Error executing service control: ${e.message}`, 'error');
     }
   }
 
