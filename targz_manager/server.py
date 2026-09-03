@@ -22,6 +22,7 @@ from .scanner import SystemScanner
 from .cleaner import SystemCleaner
 from .ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
 from .dotfiles_manager import DotfilesManager
+from .security import SecurityAuditor
 
 import time
 import threading
@@ -102,6 +103,7 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         self.skill_manager = SkillManager()
         self.ai_storage = AIStorageManager()
         self.dotfiles_manager = DotfilesManager()
+        self.security_auditor = SecurityAuditor()
         super().__init__(*args, **kwargs)
 
     def log_message(self, format, *args):
@@ -171,14 +173,48 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
 
+        if path.startswith('/api/apps'):
+            self._handle_api_apps(path, query)
+        elif path == '/api/discovered':
+            self._handle_api_discovered()
+        elif path == '/api/icons/view':
+            self._handle_api_icons_view(query)
+        elif path == '/api/stats':
+            self._handle_api_stats()
+        elif path == '/api/system-info':
+            self._handle_api_system_info()
+        elif path == '/api/options':
+            self._handle_api_options()
+        elif path == '/api/security/scan':
+            self._handle_api_security_scan()
+        elif path == '/api/projects/list':
+            self._handle_projects_list()
+        elif path == '/api/network/status':
+            self._handle_network_status()
+        elif path == '/api/doctor':
+            self._handle_api_doctor()
+        elif path == '/api/cleaner/scan':
+            self._handle_api_cleaner_scan()
+        elif path == '/api/ai/skills':
+            self._handle_api_ai_skills()
+        elif path == '/api/ai/storage':
+            self._handle_api_ai_storage()
+        elif path == '/api/ai/status':
+            self._handle_api_ai_status()
+        elif path == '/api/dotfiles/status':
+            self._handle_api_dotfiles_status()
+        elif path == '/api/browse':
+            self._handle_browse(query)
+        else:
+            self._serve_static_file(path)
+
+    def _handle_api_apps(self, path: str, query: Dict[str, list]):
         if path == '/api/apps':
             search = query.get('search', [None])[0]
             category = query.get('category', [None])[0]
             sort_by = query.get('sort', ['name'])[0]
             apps = self.db.list_apps(search=search, category=category, sort_by=sort_by)
             self._send_json({"apps": apps})
-            return
-
         elif path.startswith('/api/apps/') and path.endswith('/icon'):
             try:
                 app_id = int(path.split('/')[3])
@@ -191,8 +227,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                     self.send_error(404, "Icon Not Found")
             except ValueError:
                 self._send_error_json("Invalid app ID", status=400)
-            return
-
         elif path.startswith('/api/apps/'):
             try:
                 app_id = int(path.split('/')[3])
@@ -203,102 +237,79 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                     self._send_error_json(f"App {app_id} not found", status=404)
             except ValueError:
                 self._send_error_json("Invalid app ID", status=400)
-            return
 
-        elif path == '/api/discovered':
-            discovered = self.scanner.discover_unmanaged_apps()
-            self._send_json({"discovered": discovered})
-            return
+    def _handle_api_discovered(self):
+        discovered = self.scanner.discover_unmanaged_apps()
+        self._send_json({"discovered": discovered})
 
-        elif path == '/api/icons/view':
-            icon_p_str = query.get('path', [None])[0]
-            if icon_p_str and Path(icon_p_str).exists() and Path(icon_p_str).is_file():
-                icon_p = Path(icon_p_str)
-                mime, _ = mimetypes.guess_type(str(icon_p))
-                self._serve_file(icon_p, mime or "image/png")
-            else:
-                self.send_error(404, "Icon Not Found")
-            return
+    def _handle_api_icons_view(self, query: Dict[str, list]):
+        icon_p_str = query.get('path', [None])[0]
+        if icon_p_str and Path(icon_p_str).exists() and Path(icon_p_str).is_file():
+            icon_p = Path(icon_p_str)
+            mime, _ = mimetypes.guess_type(str(icon_p))
+            self._serve_file(icon_p, mime or "image/png")
+        else:
+            self.send_error(404, "Icon Not Found")
 
-        elif path == '/api/stats':
-            stats = self.db.get_stats()
-            self._send_json({"stats": stats})
-            return
+    def _handle_api_stats(self):
+        stats = self.db.get_stats()
+        self._send_json({"stats": stats})
 
-        elif path == '/api/system-info':
-            path_env = os.environ.get("PATH", "").split(":")
-            bin_in_path = str(DEFAULT_BIN_DIR) in path_env or str(DEFAULT_BIN_DIR.resolve()) in path_env
-            self._send_json({
-                "home": str(Path.home()),
-                "opt_dir": str(DEFAULT_OPT_DIR),
-                "bin_dir": str(DEFAULT_BIN_DIR),
-                "desktop_dir": str(DEFAULT_DESKTOP_DIR),
-                "db_path": str(self.db.db_path),
-                "bin_in_path": bin_in_path,
-                "user": os.environ.get("USER", "user")
-            })
-            return
+    def _handle_api_system_info(self):
+        path_env = os.environ.get("PATH", "").split(":")
+        bin_in_path = str(DEFAULT_BIN_DIR) in path_env or str(DEFAULT_BIN_DIR.resolve()) in path_env
+        self._send_json({
+            "home": str(Path.home()),
+            "opt_dir": str(DEFAULT_OPT_DIR),
+            "bin_dir": str(DEFAULT_BIN_DIR),
+            "desktop_dir": str(DEFAULT_DESKTOP_DIR),
+            "db_path": str(self.db.db_path),
+            "bin_in_path": bin_in_path,
+            "user": os.environ.get("USER", "user")
+        })
 
-        elif path == '/api/options':
-            opts = self.db.get_options()
-            self._send_json({"options": opts})
-            return
+    def _handle_api_options(self):
+        opts = self.db.get_options()
+        self._send_json({"options": opts})
 
-        elif path == '/api/security/scan':
-            self._handle_security_scan()
-            return
+    def _handle_api_security_scan(self):
+        results = self.security_auditor.audit_all()
+        self._send_json(results)
 
-        elif path == '/api/projects/list':
-            self._handle_projects_list()
-            return
+    def _handle_api_doctor(self):
+        from .doctor import SystemDoctor
+        doctor = SystemDoctor(cleaner=self.cleaner)
+        res = doctor.scan()
+        self._send_json(res)
 
-        elif path == '/api/network/status':
-            self._handle_network_status()
-            return
+    def _handle_api_cleaner_scan(self):
+        results = self.cleaner.scan()
+        self._send_json(results)
 
-        elif path == '/api/doctor':
-            from .doctor import SystemDoctor
-            doctor = SystemDoctor(cleaner=self.cleaner)
-            res = doctor.scan()
-            self._send_json(res)
-            return
+    def _handle_api_ai_skills(self):
+        skills = self.skill_manager.get_all_skills()
+        categories = self.skill_manager.get_categories()
+        self._send_json({
+            "skills": skills,
+            "categories": categories,
+            "targets": list(self.skill_manager.target_dirs.keys()),
+            "total_skills": len(skills),
+            "active_skills": sum(1 for s in skills if s["active"])
+        })
 
-        elif path == '/api/cleaner/scan':
-            results = self.cleaner.scan()
-            self._send_json(results)
-            return
+    def _handle_api_ai_storage(self):
+        results = self.ai_storage.scan_all()
+        self._send_json(results)
 
-        elif path == '/api/ai/skills':
-            skills = self.skill_manager.get_all_skills()
-            categories = self.skill_manager.get_categories()
-            self._send_json({
-                "skills": skills,
-                "categories": categories,
-                "targets": list(self.skill_manager.target_dirs.keys()),
-                "total_skills": len(skills),
-                "active_skills": sum(1 for s in skills if s["active"])
-            })
-            return
+    def _handle_api_ai_status(self):
+        results = AIRuntimeDetector.get_runtime_status()
+        self._send_json(results)
 
-        elif path == '/api/ai/storage':
-            results = self.ai_storage.scan_all()
-            self._send_json(results)
-            return
+    def _handle_api_dotfiles_status(self):
+        results = self.dotfiles_manager.get_status()
+        self._send_json(results)
 
-        elif path == '/api/ai/status':
-            results = AIRuntimeDetector.get_runtime_status()
-            self._send_json(results)
-            return
-
-        elif path == '/api/dotfiles/status':
-            results = self.dotfiles_manager.get_status()
-            self._send_json(results)
-            return
-
-        elif path == '/api/browse':
-            self._handle_browse(query)
-            return
-
+    def _serve_static_file(self, path: str):
         if path == '/' or path == '/index.html':
             self._serve_file(STATIC_DIR / "index.html", "text/html")
         else:
@@ -740,6 +751,23 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                     return
                 res = self.dotfiles_manager.run_command(cmd_name, message=msg, package=pkg)
                 self._send_json(res)
+                return
+
+            elif path == '/api/security/export':
+                fmt = body.get('format', 'text')
+                filepath = body.get('filepath')
+                scan_res = self.security_auditor.audit_all()
+                out_path = self.security_auditor.export_report(scan_res, filepath=filepath, format_type=fmt)
+                if fmt == "json":
+                    content = json.dumps(scan_res, indent=2)
+                else:
+                    content = self.security_auditor.format_text_report(scan_res)
+                self._send_json({
+                    "success": True,
+                    "filepath": out_path,
+                    "filename": Path(out_path).name,
+                    "content": content
+                })
                 return
 
             elif path == '/api/self-update':
