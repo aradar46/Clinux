@@ -613,328 +613,347 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            if path == '/api/heartbeat':
-                client_id = body.get('client_id', 'default') if isinstance(body, dict) else 'default'
-                if hasattr(self.server, 'record_heartbeat'):
-                    self.server.record_heartbeat(client_id)
-                self._send_json({"status": "alive", "timestamp": time.time()})
-                return
-
-            elif path == '/api/shutdown':
-                client_id = body.get('client_id', 'default') if isinstance(body, dict) else 'default'
-                if hasattr(self.server, 'record_disconnect'):
-                    self.server.record_disconnect(client_id)
-                self._send_json({"status": "shutting_down"})
-                return
-
-            elif path == '/api/apps/inspect':
-                archive_path = body.get('archive_path')
-                if not archive_path:
-                    self._send_error_json("archive_path is required")
-                    return
-                info = self.installer.inspect_archive(archive_path)
-                self._send_json(info)
-
-            elif path == '/api/apps/auto-resolve':
-                dir_path = body.get('path')
-                if not dir_path:
-                    self._send_error_json("path is required")
-                    return
-                res = self.scanner.auto_resolve_directory(dir_path)
-                self._send_json(res)
-
-            elif path == '/api/discovered/add':
-                if body.get('is_tarball_archive') and body.get('archive_path'):
-                    insp = self.installer.inspect_archive(body['archive_path'])
-                    app = self.installer.install_app(
-                        archive_path=body['archive_path'],
-                        name=body.get('name') or insp['guessed_name'],
-                        display_name=body.get('display_name') or insp['guessed_display_name'],
-                        version=body.get('version') or insp['guessed_version'],
-                        category=body.get('category', 'Utility'),
-                        install_path=body.get('install_path'),
-                        create_desktop=body.get('create_desktop', True),
-                        create_bin_symlink=body.get('create_bin_symlink', True)
-                    )
-                else:
-                    app = self.installer.register_existing_app(
-                        name=body['name'],
-                        install_path=body['install_path'],
-                        executable_path=body['executable_path'],
-                        display_name=body.get('display_name'),
-                        version=body.get('version', '1.0.0'),
-                        category=body.get('category', 'Utility'),
-                        icon_path=body.get('icon_path'),
-                        create_desktop=body.get('create_desktop', True),
-                        create_bin_symlink=body.get('create_bin_symlink', True),
-                        terminal=body.get('terminal', False),
-                        description=body.get('description', '')
-                    )
-                self._send_json({"success": True, "app": app})
-
-            elif path == '/api/discovered/ignore':
-                key = body.get('key')
-                if not key:
-                    self._send_error_json("key is required")
-                    return
-                self.db.ignore_discovery(key, body.get('display_name', ''))
-                self._send_json({"success": True})
-
-            elif path == '/api/discovered/unignore':
-                key = body.get('key')
-                if not key:
-                    self._send_error_json("key is required")
-                    return
-                self.db.unignore_discovery(key)
-                self._send_json({"success": True})
-
-            elif path == '/api/options':
-                action = body.get('action')
-                if action == 'reset':
-                    opts = self.db.reset_options()
-                else:
-                    new_opts = body.get('options', body)
-                    opts = self.db.save_options(new_opts)
-                self._send_json({"success": True, "options": opts})
-                return
-
-            elif path == '/api/cleaner/clean':
-                target_ids = body.get('targets', [])
-                sudo_password = body.get('password')
-                res = self.cleaner.clean(target_ids, sudo_password=sudo_password)
-                self._send_json(res)
-                return
-
-            elif path == '/api/ai/skills/toggle':
-                category = body.get('category')
-                key = body.get('key')
-                active = body.get('active', True)
-                targets = body.get('targets')
-
-                if category:
-                    res = self.skill_manager.toggle_category(category, active=active, targets=targets)
-                elif key:
-                    if active:
-                        res = self.skill_manager.activate_skill(key, targets=targets)
-                    else:
-                        res = self.skill_manager.deactivate_skill(key, targets=targets)
-                else:
-                    self._send_error_json("Either 'key' or 'category' is required", status=400)
-                    return
-                self._send_json(res)
-                return
-
-            elif path == '/api/ai/storage/delete':
-                model_id = body.get('model_id')
-                if not model_id:
-                    self._send_error_json("model_id is required", status=400)
-                    return
-                res = self.ai_storage.delete_model(model_id)
-                self._send_json(res)
-                return
-
-            elif path == '/api/ai/storage/clean':
-                workspace_id = body.get('workspace_id')
-                if not workspace_id:
-                    self._send_error_json("workspace_id is required", status=400)
-                    return
-                res = self.ai_storage.clean_workspace(workspace_id)
-                self._send_json(res)
-                return
-
-            elif path == '/api/dotfiles/run':
-                cmd_name = body.get('command')
-                msg = body.get('message')
-                pkg = body.get('package')
-                if not cmd_name:
-                    self._send_error_json("command is required", status=400)
-                    return
-                res = self.dotfiles_manager.run_command(cmd_name, message=msg, package=pkg)
-                self._send_json(res)
-                return
-
-            elif path == '/api/security/export':
-                fmt = body.get('format', 'text')
-                filepath = body.get('filepath')
-                scan_res = self.security_auditor.audit_all()
-                out_path = self.security_auditor.export_report(scan_res, filepath=filepath, format_type=fmt)
-                if fmt == "json":
-                    content = json.dumps(scan_res, indent=2)
-                else:
-                    content = self.security_auditor.format_text_report(scan_res)
-                self._send_json({
-                    "success": True,
-                    "filepath": out_path,
-                    "filename": Path(out_path).name,
-                    "content": content
-                })
-                return
-
-            elif path == '/api/self-update':
-                cmd = "curl -fsSL https://raw.githubusercontent.com/aradar46/Clinux/main/install.sh | bash"
-                env = os.environ.copy()
-                env["HOME"] = str(Path.home())
-                env["PATH"] = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
-
-                cwd = Path.cwd()
-                local_pull_out = ""
-                if (cwd / ".git").exists() and (cwd / "targz_manager").exists():
-                    try:
-                        pull_res = subprocess.run(
-                            ["git", "pull", "--ff-only"],
-                            cwd=str(cwd),
-                            capture_output=True,
-                            text=True,
-                            timeout=30
-                        )
-                        local_pull_out = (pull_res.stdout + pull_res.stderr).strip()
-                    except Exception as e:
-                        local_pull_out = f"Git pull notice: {e}"
-
-                try:
-                    res = subprocess.run(
-                        cmd,
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                        env=env
-                    )
-                    combined_output = "\n".join(filter(None, [local_pull_out, res.stdout, res.stderr])).strip()
-                    self._send_json({
-                        "success": res.returncode == 0,
-                        "returncode": res.returncode,
-                        "output": combined_output or "Update completed."
-                    })
-                except Exception as e:
-                    self._send_json({
-                        "success": False,
-                        "error": str(e),
-                        "output": local_pull_out
-                    }, status=500)
-                return
-
-            elif path == '/api/apps/scan-directory':
-                dir_path = body.get('dir_path')
-                app_name = body.get('app_name', '')
-                if not dir_path:
-                    self._send_error_json("dir_path is required")
-                    return
-                candidates = self.installer.scan_directory_candidates(Path(dir_path), app_name)
-                self._send_json(candidates)
-
-            elif path == '/api/apps/install':
-                app = self.installer.install_app(
-                    archive_path=body["archive_path"],
-                    name=body["name"],
-                    display_name=body.get("display_name"),
-                    version=body.get("version"),
-                    description=body.get("description", ""),
-                    category=body.get("category", "Utility"),
-                    install_path=body.get("install_path"),
-                    executable_rel_path=body.get("executable_rel_path"),
-                    icon_rel_path=body.get("icon_rel_path"),
-                    create_desktop=body.get("create_desktop", True),
-                    create_bin_symlink=body.get("create_bin_symlink", True),
-                    flatten_wrapper=body.get("flatten_wrapper", True),
-                    terminal=body.get("terminal", False),
-                    notes=body.get("notes", "")
-                )
-                self._send_json({"success": True, "app": app})
-
-            elif path == '/api/apps/register':
-                app = self.installer.register_existing_app(
-                    name=body["name"],
-                    install_path=body["install_path"],
-                    executable_path=body["executable_path"],
-                    display_name=body.get("display_name"),
-                    version=body.get("version", "1.0.0"),
-                    description=body.get("description", ""),
-                    category=body.get("category", "Utility"),
-                    icon_path=body.get("icon_path"),
-                    create_desktop=body.get("create_desktop", False),
-                    create_bin_symlink=body.get("create_bin_symlink", False),
-                    terminal=body.get("terminal", False),
-                    notes=body.get("notes", "")
-                )
-                self._send_json({"success": True, "app": app})
-
-            elif path.startswith('/api/apps/') and path.endswith('/update'):
-                app_id = int(path.split('/')[3])
-                archive_path = body.get("archive_path")
-                if not archive_path:
-                    self._send_error_json("archive_path is required")
-                    return
-                app = self.installer.update_app(
-                    app_id=app_id,
-                    archive_path=archive_path,
-                    new_version=body.get("version"),
-                    flatten_wrapper=body.get("flatten_wrapper", True),
-                    executable_rel_path=body.get("executable_rel_path")
-                )
-                self._send_json({"success": True, "app": app})
-
-            elif path.startswith('/api/apps/') and path.endswith('/launch'):
-                app_id = int(path.split('/')[3])
-                self.installer.launch_app(app_id)
-                self._send_json({"success": True, "message": "App launched successfully"})
-
-            elif path.startswith('/api/apps/') and path.endswith('/open-folder'):
-                app_id = int(path.split('/')[3])
-                self.installer.open_folder(app_id)
-                self._send_json({"success": True, "message": "Folder opened in file manager"})
-
-            elif path.startswith('/api/apps/') and path.endswith('/toggle-shortcut'):
-                app_id = int(path.split('/')[3])
-                shortcut_type = body.get("type")
-                enable = body.get("enable", True)
-                app = self.db.get_app(app_id)
-                if not app:
-                    self._send_error_json("App not found", status=404)
-                    return
-
-                if shortcut_type == "desktop":
-                    if enable:
-                        new_path = self.installer.create_desktop_entry(
-                            name=app["name"],
-                            display_name=app["display_name"],
-                            exec_path=app["executable_path"],
-                            icon_path=app["icon_path"],
-                            category=app["category"],
-                            terminal=bool(app.get("terminal")),
-                            comment=app.get("description", "")
-                        )
-                        self.db.update_app(app_id, {"desktop_entry_path": new_path})
-                    else:
-                        self.installer.remove_desktop_entry(app.get("desktop_entry_path"))
-                        self.db.update_app(app_id, {"desktop_entry_path": None})
-
-                elif shortcut_type == "symlink":
-                    if enable:
-                        new_link = self.installer.create_symlink(app["executable_path"], app["name"])
-                        self.db.update_app(app_id, {"symlink_path": new_link})
-                    else:
-                        self.installer.remove_symlink(app.get("symlink_path"))
-                        self.db.update_app(app_id, {"symlink_path": None})
-
-                self._send_json({"success": True, "app": self.db.get_app(app_id)})
-
-            elif path.startswith('/api/apps/') and path.endswith('/edit'):
-                app_id = int(path.split('/')[3])
-                updates = {k: v for k, v in body.items() if k in {
-                    "display_name", "version", "description", "category",
-                    "executable_path", "icon_path", "terminal", "notes", "ignored"
-                }}
-                self.db.update_app(app_id, updates)
-                self._send_json({"success": True, "app": self.db.get_app(app_id)})
-
-            else:
-                self._send_error_json("Endpoint not found", status=404)
-
+            self._dispatch_post_request(path, body)
         except ArchiveError as e:
             self._send_error_json(str(e), status=400)
         except Exception as e:
             self._send_error_json(f"Internal server error: {e}", status=500)
+
+    def _dispatch_post_request(self, path: str, body: Dict[str, Any]):
+        if path in ('/api/heartbeat', '/api/shutdown', '/api/options', '/api/self-update'):
+            self._handle_post_system(path, body)
+        elif path.startswith('/api/apps'):
+            self._handle_post_apps(path, body)
+        elif path.startswith('/api/discovered'):
+            self._handle_post_discovered(path, body)
+        elif path.startswith('/api/ai'):
+            self._handle_post_ai(path, body)
+        elif path == '/api/cleaner/clean':
+            self._handle_post_cleaner(body)
+        elif path == '/api/dotfiles/run':
+            self._handle_post_dotfiles(body)
+        elif path == '/api/security/export':
+            self._handle_post_security_export(body)
+        else:
+            self._send_error_json("Endpoint not found", status=404)
+
+    def _handle_post_system(self, path: str, body: Dict[str, Any]):
+        if path == '/api/heartbeat':
+            client_id = body.get('client_id', 'default') if isinstance(body, dict) else 'default'
+            if hasattr(self.server, 'record_heartbeat'):
+                self.server.record_heartbeat(client_id)
+            self._send_json({"status": "alive", "timestamp": time.time()})
+
+        elif path == '/api/shutdown':
+            client_id = body.get('client_id', 'default') if isinstance(body, dict) else 'default'
+            if hasattr(self.server, 'record_disconnect'):
+                self.server.record_disconnect(client_id)
+            self._send_json({"status": "shutting_down"})
+
+        elif path == '/api/options':
+            action = body.get('action')
+            if action == 'reset':
+                opts = self.db.reset_options()
+            else:
+                new_opts = body.get('options', body)
+                opts = self.db.save_options(new_opts)
+            self._send_json({"success": True, "options": opts})
+
+        elif path == '/api/self-update':
+            cmd = "curl -fsSL https://raw.githubusercontent.com/aradar46/Clinux/main/install.sh | bash"
+            env = os.environ.copy()
+            env["HOME"] = str(Path.home())
+            env["PATH"] = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+
+            cwd = Path.cwd()
+            local_pull_out = ""
+            if (cwd / ".git").exists() and (cwd / "targz_manager").exists():
+                try:
+                    pull_res = subprocess.run(
+                        ["git", "pull", "--ff-only"],
+                        cwd=str(cwd),
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    local_pull_out = (pull_res.stdout + pull_res.stderr).strip()
+                except Exception as e:
+                    local_pull_out = f"Git pull notice: {e}"
+
+            try:
+                res = subprocess.run(
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    env=env
+                )
+                combined_output = "\n".join(filter(None, [local_pull_out, res.stdout, res.stderr])).strip()
+                self._send_json({
+                    "success": res.returncode == 0,
+                    "returncode": res.returncode,
+                    "output": combined_output or "Update completed."
+                })
+            except Exception as e:
+                self._send_json({
+                    "success": False,
+                    "error": str(e),
+                    "output": local_pull_out
+                }, status=500)
+
+    def _handle_post_discovered(self, path: str, body: Dict[str, Any]):
+        if path == '/api/discovered/add':
+            if body.get('is_tarball_archive') and body.get('archive_path'):
+                insp = self.installer.inspect_archive(body['archive_path'])
+                app = self.installer.install_app(
+                    archive_path=body['archive_path'],
+                    name=body.get('name') or insp['guessed_name'],
+                    display_name=body.get('display_name') or insp['guessed_display_name'],
+                    version=body.get('version') or insp['guessed_version'],
+                    category=body.get('category', 'Utility'),
+                    install_path=body.get('install_path'),
+                    create_desktop=body.get('create_desktop', True),
+                    create_bin_symlink=body.get('create_bin_symlink', True)
+                )
+            else:
+                app = self.installer.register_existing_app(
+                    name=body['name'],
+                    install_path=body['install_path'],
+                    executable_path=body['executable_path'],
+                    display_name=body.get('display_name'),
+                    version=body.get('version', '1.0.0'),
+                    category=body.get('category', 'Utility'),
+                    icon_path=body.get('icon_path'),
+                    create_desktop=body.get('create_desktop', True),
+                    create_bin_symlink=body.get('create_bin_symlink', True),
+                    terminal=body.get('terminal', False),
+                    description=body.get('description', '')
+                )
+            self._send_json({"success": True, "app": app})
+
+        elif path == '/api/discovered/ignore':
+            key = body.get('key')
+            if not key:
+                self._send_error_json("key is required")
+                return
+            self.db.ignore_discovery(key, body.get('display_name', ''))
+            self._send_json({"success": True})
+
+        elif path == '/api/discovered/unignore':
+            key = body.get('key')
+            if not key:
+                self._send_error_json("key is required")
+                return
+            self.db.unignore_discovery(key)
+            self._send_json({"success": True})
+
+        else:
+            self._send_error_json("Endpoint not found", status=404)
+
+    def _handle_post_ai(self, path: str, body: Dict[str, Any]):
+        if path == '/api/ai/skills/toggle':
+            category = body.get('category')
+            key = body.get('key')
+            active = body.get('active', True)
+            targets = body.get('targets')
+
+            if category:
+                res = self.skill_manager.toggle_category(category, active=active, targets=targets)
+            elif key:
+                if active:
+                    res = self.skill_manager.activate_skill(key, targets=targets)
+                else:
+                    res = self.skill_manager.deactivate_skill(key, targets=targets)
+            else:
+                self._send_error_json("Either 'key' or 'category' is required", status=400)
+                return
+            self._send_json(res)
+
+        elif path == '/api/ai/storage/delete':
+            model_id = body.get('model_id')
+            if not model_id:
+                self._send_error_json("model_id is required", status=400)
+                return
+            res = self.ai_storage.delete_model(model_id)
+            self._send_json(res)
+
+        elif path == '/api/ai/storage/clean':
+            workspace_id = body.get('workspace_id')
+            if not workspace_id:
+                self._send_error_json("workspace_id is required", status=400)
+                return
+            res = self.ai_storage.clean_workspace(workspace_id)
+            self._send_json(res)
+
+        else:
+            self._send_error_json("Endpoint not found", status=404)
+
+    def _handle_post_cleaner(self, body: Dict[str, Any]):
+        target_ids = body.get('targets', [])
+        sudo_password = body.get('password')
+        res = self.cleaner.clean(target_ids, sudo_password=sudo_password)
+        self._send_json(res)
+
+    def _handle_post_dotfiles(self, body: Dict[str, Any]):
+        cmd_name = body.get('command')
+        msg = body.get('message')
+        pkg = body.get('package')
+        if not cmd_name:
+            self._send_error_json("command is required", status=400)
+            return
+        res = self.dotfiles_manager.run_command(cmd_name, message=msg, package=pkg)
+        self._send_json(res)
+
+    def _handle_post_security_export(self, body: Dict[str, Any]):
+        fmt = body.get('format', 'text')
+        filepath = body.get('filepath')
+        scan_res = self.security_auditor.audit_all()
+        out_path = self.security_auditor.export_report(scan_res, filepath=filepath, format_type=fmt)
+        if fmt == "json":
+            content = json.dumps(scan_res, indent=2)
+        else:
+            content = self.security_auditor.format_text_report(scan_res)
+        self._send_json({
+            "success": True,
+            "filepath": out_path,
+            "filename": Path(out_path).name,
+            "content": content
+        })
+
+    def _handle_post_apps(self, path: str, body: Dict[str, Any]):
+        if path == '/api/apps/inspect':
+            archive_path = body.get('archive_path')
+            if not archive_path:
+                self._send_error_json("archive_path is required")
+                return
+            info = self.installer.inspect_archive(archive_path)
+            self._send_json(info)
+
+        elif path == '/api/apps/auto-resolve':
+            dir_path = body.get('path')
+            if not dir_path:
+                self._send_error_json("path is required")
+                return
+            res = self.scanner.auto_resolve_directory(dir_path)
+            self._send_json(res)
+
+        elif path == '/api/apps/scan-directory':
+            dir_path = body.get('dir_path')
+            app_name = body.get('app_name', '')
+            if not dir_path:
+                self._send_error_json("dir_path is required")
+                return
+            candidates = self.installer.scan_directory_candidates(Path(dir_path), app_name)
+            self._send_json(candidates)
+
+        elif path == '/api/apps/install':
+            app = self.installer.install_app(
+                archive_path=body["archive_path"],
+                name=body["name"],
+                display_name=body.get("display_name"),
+                version=body.get("version"),
+                description=body.get("description", ""),
+                category=body.get("category", "Utility"),
+                install_path=body.get("install_path"),
+                executable_rel_path=body.get("executable_rel_path"),
+                icon_rel_path=body.get("icon_rel_path"),
+                create_desktop=body.get("create_desktop", True),
+                create_bin_symlink=body.get("create_bin_symlink", True),
+                flatten_wrapper=body.get("flatten_wrapper", True),
+                terminal=body.get("terminal", False),
+                notes=body.get("notes", "")
+            )
+            self._send_json({"success": True, "app": app})
+
+        elif path == '/api/apps/register':
+            app = self.installer.register_existing_app(
+                name=body["name"],
+                install_path=body["install_path"],
+                executable_path=body["executable_path"],
+                display_name=body.get("display_name"),
+                version=body.get("version", "1.0.0"),
+                description=body.get("description", ""),
+                category=body.get("category", "Utility"),
+                icon_path=body.get("icon_path"),
+                create_desktop=body.get("create_desktop", False),
+                create_bin_symlink=body.get("create_bin_symlink", False),
+                terminal=body.get("terminal", False),
+                notes=body.get("notes", "")
+            )
+            self._send_json({"success": True, "app": app})
+
+        elif path.startswith('/api/apps/') and path.endswith('/update'):
+            app_id = int(path.split('/')[3])
+            archive_path = body.get("archive_path")
+            if not archive_path:
+                self._send_error_json("archive_path is required")
+                return
+            app = self.installer.update_app(
+                app_id=app_id,
+                archive_path=archive_path,
+                new_version=body.get("version"),
+                flatten_wrapper=body.get("flatten_wrapper", True),
+                executable_rel_path=body.get("executable_rel_path")
+            )
+            self._send_json({"success": True, "app": app})
+
+        elif path.startswith('/api/apps/') and path.endswith('/launch'):
+            app_id = int(path.split('/')[3])
+            self.installer.launch_app(app_id)
+            self._send_json({"success": True, "message": "App launched successfully"})
+
+        elif path.startswith('/api/apps/') and path.endswith('/open-folder'):
+            app_id = int(path.split('/')[3])
+            self.installer.open_folder(app_id)
+            self._send_json({"success": True, "message": "Folder opened in file manager"})
+
+        elif path.startswith('/api/apps/') and path.endswith('/toggle-shortcut'):
+            app_id = int(path.split('/')[3])
+            shortcut_type = body.get("type")
+            enable = body.get("enable", True)
+            app = self.db.get_app(app_id)
+            if not app:
+                self._send_error_json("App not found", status=404)
+                return
+
+            if shortcut_type == "desktop":
+                if enable:
+                    new_path = self.installer.create_desktop_entry(
+                        name=app["name"],
+                        display_name=app["display_name"],
+                        exec_path=app["executable_path"],
+                        icon_path=app["icon_path"],
+                        category=app["category"],
+                        terminal=bool(app.get("terminal")),
+                        comment=app.get("description", "")
+                    )
+                    self.db.update_app(app_id, {"desktop_entry_path": new_path})
+                else:
+                    self.installer.remove_desktop_entry(app.get("desktop_entry_path"))
+                    self.db.update_app(app_id, {"desktop_entry_path": None})
+
+            elif shortcut_type == "symlink":
+                if enable:
+                    new_link = self.installer.create_symlink(app["executable_path"], app["name"])
+                    self.db.update_app(app_id, {"symlink_path": new_link})
+                else:
+                    self.installer.remove_symlink(app.get("symlink_path"))
+                    self.db.update_app(app_id, {"symlink_path": None})
+
+            self._send_json({"success": True, "app": self.db.get_app(app_id)})
+
+        elif path.startswith('/api/apps/') and path.endswith('/edit'):
+            app_id = int(path.split('/')[3])
+            updates = {k: v for k, v in body.items() if k in {
+                "display_name", "version", "description", "category",
+                "executable_path", "icon_path", "terminal", "notes", "ignored"
+            }}
+            self.db.update_app(app_id, updates)
+            self._send_json({"success": True, "app": self.db.get_app(app_id)})
+
+        else:
+            self._send_error_json("Endpoint not found", status=404)
 
     def _handle_upload(self):
         """Handle multipart file upload without third-party dependencies"""
