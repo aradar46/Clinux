@@ -5,6 +5,7 @@ import subprocess
 import mimetypes
 import tempfile
 import urllib.parse
+import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from pathlib import Path
@@ -860,7 +861,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 return
 
             elif path == '/api/self-update':
-                cmd = "curl -fsSL https://raw.githubusercontent.com/aradar46/Clinux/main/install.sh | bash"
                 env = os.environ.copy()
                 env["HOME"] = str(Path.home())
                 env["PATH"] = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
@@ -881,14 +881,39 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                         local_pull_out = f"Git pull notice: {e}"
 
                 try:
-                    res = subprocess.run(
-                        cmd,
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                        env=env
-                    )
+                    install_sh_path = cwd / "install.sh"
+                    repo_root_install_sh = Path(__file__).parent.parent / "install.sh"
+                    if install_sh_path.exists():
+                        target_script = str(install_sh_path.resolve())
+                        res = subprocess.run(
+                            ["bash", target_script],
+                            capture_output=True,
+                            text=True,
+                            timeout=120,
+                            env=env
+                        )
+                    elif repo_root_install_sh.exists():
+                        target_script = str(repo_root_install_sh.resolve())
+                        res = subprocess.run(
+                            ["bash", target_script],
+                            capture_output=True,
+                            text=True,
+                            timeout=120,
+                            env=env
+                        )
+                    else:
+                        url = "https://raw.githubusercontent.com/aradar46/Clinux/main/install.sh"
+                        with urllib.request.urlopen(url, timeout=30) as resp:
+                            script_content = resp.read().decode("utf-8")
+                        res = subprocess.run(
+                            ["bash"],
+                            input=script_content,
+                            capture_output=True,
+                            text=True,
+                            timeout=120,
+                            env=env
+                        )
+
                     combined_output = "\n".join(filter(None, [local_pull_out, res.stdout, res.stderr])).strip()
                     self._send_json({
                         "success": res.returncode == 0,

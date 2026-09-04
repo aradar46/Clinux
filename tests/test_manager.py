@@ -277,6 +277,16 @@ class TestHttpServerApi(unittest.TestCase):
             self.assertTrue(data.get("success"))
             self.assertIn("Updating existing install", data.get("output", ""))
 
+        # Verify subprocess.run was called safely without shell=True
+        self.assertTrue(mock_run.called)
+        # Check that none of the calls used shell=True
+        for call in mock_run.call_args_list:
+            kwargs = call.kwargs
+            self.assertFalse(kwargs.get("shell", False), "subprocess.run must not use shell=True")
+            cmd_arg = call.args[0] if call.args else kwargs.get("args")
+            self.assertIsInstance(cmd_arg, list, "Command must be passed as a list of arguments")
+            self.assertIn(cmd_arg[0], ("git", "bash"), "First command element should be executable binary")
+
 
     def test_watchdog_disconnect_grace_and_cancel(self):
         from targz_manager.server import ThreadedHTTPServer
