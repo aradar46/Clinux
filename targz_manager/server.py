@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import re
 import subprocess
 import mimetypes
 import tempfile
@@ -725,6 +726,9 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             if not service_name or not action:
                 self._send_error_json("service and action are required", status=400)
                 return
+            if not isinstance(service_name, str) or not re.fullmatch(r"[A-Za-z0-9:_.@-]+", service_name) or service_name.startswith("-"):
+                self._send_error_json("Invalid service name", status=400)
+                return
 
             valid_actions = {"start": "start", "stop": "stop", "restart": "restart", "reset": "restart", "reload": "reload", "enable": "enable", "disable": "disable"}
             sys_action = valid_actions.get(action.lower())
@@ -732,9 +736,9 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 self._send_error_json(f"Invalid service action: {action}", status=400)
                 return
 
-            cmd = ["systemctl", sys_action, service_name]
+            cmd = ["systemctl", sys_action, "--", service_name]
             if os.geteuid() != 0:
-                cmd = ["sudo", "-n", "systemctl", sys_action, service_name]
+                cmd = ["sudo", "-n", "systemctl", sys_action, "--", service_name]
 
             try:
                 res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
