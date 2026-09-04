@@ -166,7 +166,7 @@ class Installer:
         has_wrapper = False
         if len(root_prefixes) == 1:
             candidate = list(root_prefixes)[0]
-            if len([m for m in members if m["name"].startswith(candidate + '/') or m["name"] == candidate]) == len(members):
+            if all(m["name"].startswith(candidate + '/') or m["name"] == candidate for m in members):
                 single_root = candidate
                 has_wrapper = True
 
