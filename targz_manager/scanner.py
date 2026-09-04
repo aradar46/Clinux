@@ -422,7 +422,7 @@ class SystemScanner:
                         "discovery_reason": "Found in ~/Downloads"
                     })
 
-        ignored_keys = {row["key"] for row in self.db.list_ignored_discoveries()}
+        ignored_keys = self.db.get_ignored_keys_set()
         for item in discovered:
             key = item.get("archive_path") or item.get("install_path")
             item["ignore_key"] = key

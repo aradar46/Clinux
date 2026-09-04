@@ -98,6 +98,22 @@ class TestTarGzManager(unittest.TestCase):
         self.assertTrue(deleted)
         self.assertEqual(len(self.db.list_apps()), 0)
 
+    def test_ignored_discoveries_methods(self):
+        self.assertEqual(self.db.get_ignored_keys_set(), set())
+        self.assertEqual(len(self.db.list_ignored_discoveries()), 0)
+
+        self.db.ignore_discovery("/opt/ignored_app1", "Ignored App 1")
+        self.db.ignore_discovery("/opt/ignored_app2", "Ignored App 2")
+
+        keys_set = self.db.get_ignored_keys_set()
+        self.assertEqual(keys_set, {"/opt/ignored_app1", "/opt/ignored_app2"})
+
+        list_ignored = self.db.list_ignored_discoveries()
+        self.assertEqual(len(list_ignored), 2)
+
+        self.db.unignore_discovery("/opt/ignored_app1")
+        self.assertEqual(self.db.get_ignored_keys_set(), {"/opt/ignored_app2"})
+
     def test_inspect_archive(self):
         info = self.installer.inspect_archive(str(self.tar_gz_path))
         self.assertEqual(info["guessed_name"], "sample-app")
@@ -188,8 +204,12 @@ class TestTarGzManager(unittest.TestCase):
         self.assertTrue(resolved["executable_path"].endswith("sampleapp"))
         self.assertTrue(resolved["icon_path"].endswith("icon.png"))
 
+        self.db.ignore_discovery(str(self.sample_app_dir))
         discovered = scanner.discover_unmanaged_apps()
         self.assertTrue(isinstance(discovered, list))
+        sample_items = [item for item in discovered if item.get("install_path") == str(self.sample_app_dir)]
+        if sample_items:
+            self.assertTrue(sample_items[0]["ignored"])
 
 
 class TestHttpServerApi(unittest.TestCase):
