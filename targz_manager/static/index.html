@@ -24,10 +24,10 @@
       <div class="titlebar-controls">
         <button class="win-btn win-btn-toggle" id="crtToggleBtn" onclick="app.toggleCRT()" title="Toggle CRT Terminal Monitor Effect">CRT: ON</button>
         <button class="win-btn win-btn-toggle" id="themeToggleBtn" onclick="app.toggleTheme()" title="Toggle Color Palette">THEME</button>
-        <button class="win-btn" onclick="app.openHelpModal()">?</button>
-        <button class="win-btn" onclick="app.refreshAll()">_</button>
-        <button class="win-btn">□</button>
-        <button class="win-btn" onclick="app.closeWindow()">X</button>
+        <button class="win-btn" onclick="app.openHelpModal()" aria-label="Help" title="Help (?)">?</button>
+        <button class="win-btn" onclick="app.refreshAll()" aria-label="Refresh" title="Refresh">_</button>
+        <button class="win-btn" aria-label="Maximize" title="Maximize">□</button>
+        <button class="win-btn" onclick="app.closeWindow()" aria-label="Close application" title="Close application">X</button>
       </div>
     </div>
 
@@ -44,8 +44,8 @@
       <div class="menu-spacer"></div>
       <!-- Search Input in Header -->
       <div style="display:flex; align-items:center; gap:4px;">
-        <span style="color:var(--text-dark); font-weight:bold; font-size:11px;">FIND:</span>
-        <input type="text" id="searchInput" class="retro-input" style="width:180px; height:20px; font-size:11px;" placeholder="Filter... (/)" autocomplete="off">
+        <label for="searchInput" style="color:var(--text-dark); font-weight:bold; font-size:11px;">FIND:</label>
+        <input type="text" id="searchInput" class="retro-input" style="width:180px; height:20px; font-size:11px;" placeholder="Filter... (/)" autocomplete="off" aria-label="Filter modules">
       </div>
     </div>
 
@@ -131,30 +131,20 @@
         </div>
 
         <!-- VIEW 1: SYSTEM DASHBOARD -->
-<div id="dashboardView" class="retro-panel" style="display:flex; flex-direction:column; gap:12px; margin-top:0;">
+        <div id="dashboardView" class="retro-panel" style="display:flex; flex-direction:column; gap:12px; margin-top:0;">
           <div class="retro-panel-title">SYSTEM STATUS & DASHBOARD</div>
 
           <!-- ASCII Health Bar Panel -->
           <div class="terminal-box" style="padding:12px;">
-            <div style="font-size:14px; font-weight:bold; color:var(--c-terminal-green-bright); margin-bottom:8px;">
+            <div style="font-size:14px; font-weight:bold; color:var(--c-terminal-green-bright); margin-bottom:8px;" id="dashHealthTitle">
               SYSTEM HEALTH: [████████████████████░░░░] 82% — ALL SYSTEMS OPERATIONAL
             </div>
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; border-top:1px dashed var(--c-terminal-green); padding-top:8px;">
-              <div>Disk Usage: <strong style="color:var(--c-warm-beige);">412 GB / 1 TB (41%)</strong></div>
-              <div>Running Services: <strong style="color:var(--c-warm-beige);">12 active</strong></div>
+              <div>Disk Usage: <strong style="color:var(--c-warm-beige);" id="dashDiskUsageStr">-- GB / -- GB (--%)</strong></div>
+              <div>Running Services: <strong style="color:var(--c-warm-beige);" id="dashServicesStr">-- active</strong></div>
               <div>AI Models Footprint: <strong style="color:var(--c-warm-beige);" id="dashAIModelSize">-- GB</strong></div>
               <div>Reclaimable Junk: <strong style="color:var(--c-warning-yellow);" id="dashCleanerSize">-- GB</strong></div>
             </div>
-          </div>
-
-          <!-- Quick Actions Bar -->
-          <div class="action-toolbar">
-            <button class="retro-btn retro-btn-green" onclick="app.setTab('cleaner')">[ C ] SYSTEM CLEANER</button>
-            <button class="retro-btn" onclick="app.openInstallWizard()">[ I ] INSTALL TARBALL</button>
-            <button class="retro-btn" onclick="app.openRegisterModal()">[ R ] REGISTER EXISTING</button>
-            <button class="retro-btn" onclick="app.setTab('ai')">[ A ] AI & SKILLS</button>
-            <button class="retro-btn" onclick="app.setTab('dotfiles')">[ D ] DOTFILES</button>
-            <button class="retro-btn" id="updateSelfBtn" onclick="app.triggerDirectUpdate()">[ U ] UPDATE CLINUX</button>
           </div>
 
           <!-- Recent Activity Log Panel -->
@@ -272,7 +262,7 @@
               </div>
             </div>
 
-            <div id="aiSkillsGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:10px;">
+            <div id="aiSkillsGrid" style="display:flex; flex-direction:column; gap:12px;">
               <!-- Dynamically populated -->
             </div>
           </div>
@@ -345,56 +335,15 @@
         </div>
 
         <!-- VIEW 6: SERVICES PANEL -->
-        <div id="servicesView" class="retro-panel" style="display:none; margin-top:0;">
+        <div id="servicesView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
           <div class="retro-panel-title">SYSTEM SERVICES & RUNTIMES</div>
-          <table class="retro-table">
-            <thead>
-              <tr>
-                <th>SERVICE</th>
-                <th>STATE</th>
-                <th>BOOT</th>
-                <th>PORT / PID</th>
-                <th>ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="selected">
-                <td>docker.service</td>
-                <td><span style="color:var(--c-terminal-green-bright);">RUNNING</span></td>
-                <td>ENABLED</td>
-                <td>PID 1248</td>
-                <td>[STOP] [RESTART]</td>
-              </tr>
-              <tr>
-                <td>ollama.service</td>
-                <td><span style="color:var(--c-terminal-green-bright);">RUNNING</span></td>
-                <td>ENABLED</td>
-                <td>11434 / PID 3412</td>
-                <td>[STOP] [RESTART]</td>
-              </tr>
-              <tr>
-                <td>bluetooth.service</td>
-                <td><span style="color:var(--text-muted);">STOPPED</span></td>
-                <td>DISABLED</td>
-                <td>-</td>
-                <td>[START] [ENABLE]</td>
-              </tr>
-              <tr>
-                <td>cups.service</td>
-                <td><span style="color:var(--c-terminal-green-bright);">RUNNING</span></td>
-                <td>ENABLED</td>
-                <td>631 / PID 891</td>
-                <td>[STOP] [RESTART]</td>
-              </tr>
-              <tr>
-                <td>ssh.service</td>
-                <td><span style="color:var(--c-terminal-green-bright);">RUNNING</span></td>
-                <td>ENABLED</td>
-                <td>22 / PID 780</td>
-                <td>[STOP] [RESTART]</td>
-              </tr>
-            </tbody>
-          </table>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>Manage system daemons, background services, and systemd units.</div>
+            <button class="retro-btn" onclick="app.fetchServicesList()">[ R ] REFRESH SERVICES</button>
+          </div>
+          <div id="servicesTableContainer">
+            <!-- Dynamically populated by app.js -->
+          </div>
         </div>
 
         <!-- VIEW 7: OPTIONS CONTROL PANEL -->
@@ -630,7 +579,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>INSTALL TARBALL APPLICATION</span>
-        <button class="win-btn" onclick="app.closeModal('installModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('installModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div class="form-group" style="margin-bottom:10px;">
@@ -700,7 +649,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>REGISTER EXISTING APPLICATION</span>
-        <button class="win-btn" onclick="app.closeModal('registerModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('registerModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div style="margin-bottom:10px;">
@@ -762,7 +711,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>UPDATE APPLICATION: <span id="updateAppNameHeader">App</span></span>
-        <button class="win-btn" onclick="app.closeModal('updateModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('updateModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div class="terminal-box" style="margin-bottom:10px;">
@@ -803,7 +752,7 @@
     <div class="modal-dialog">
       <div class="modal-header" style="background:#6e2020;">
         <span>UNINSTALL APPLICATION</span>
-        <button class="win-btn" onclick="app.closeModal('uninstallModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('uninstallModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <p style="margin-bottom:10px;">Confirm removal of <strong id="uninstallAppName">App</strong>?</p>
@@ -830,7 +779,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>APP CONFIGURATION</span>
-        <button class="win-btn" onclick="app.closeModal('detailsModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('detailsModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
@@ -885,7 +834,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>SELECT FILE OR DIRECTORY</span>
-        <button class="win-btn" onclick="app.closeModal('fileBrowserModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('fileBrowserModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div id="browserBreadcrumbs" style="margin-bottom:6px; font-weight:bold; color:var(--c-terminal-green);"></div>
@@ -905,7 +854,7 @@
     <div class="modal-dialog">
       <div class="modal-header" style="background:#7a5f14;">
         <span>ROOT PRIVILEGES REQUIRED</span>
-        <button class="win-btn" onclick="app.closeModal('sudoCommandModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('sudoCommandModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <p id="sudoCommandDesc" style="margin-bottom:8px;">Run this command in your terminal to clean root-protected target:</p>
@@ -924,7 +873,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>ABOUT CLINUX 1.0</span>
-        <button class="win-btn" onclick="app.closeModal('aboutModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('aboutModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div class="terminal-box" style="text-align:center; padding:16px;">
@@ -950,7 +899,7 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <span>CLINUX 1.0 HELP & KEYBOARD SHORTCUTS</span>
-        <button class="win-btn" onclick="app.closeModal('helpModal')">X</button>
+        <button class="win-btn" onclick="app.closeModal('helpModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
         <div class="terminal-box">

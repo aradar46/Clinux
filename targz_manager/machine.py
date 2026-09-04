@@ -208,11 +208,13 @@ class MachineManager:
 
         if apps_data:
             for app in apps_data:
-                lines.append("[[portable_apps]]")
-                lines.append(f'name = {fmt_str(app["name"])}')
-                lines.append(f'display_name = {fmt_str(app["display_name"])}')
-                lines.append(f'version = {fmt_str(app["version"])}')
-                lines.append("")
+                lines.extend((
+                    "[[portable_apps]]",
+                    f'name = {fmt_str(app["name"])}',
+                    f'display_name = {fmt_str(app["display_name"])}',
+                    f'version = {fmt_str(app["version"])}',
+                    ""
+                ))
 
         lines.append("[python]")
         lines.append(f"versions = {repr(python_versions)}")
