@@ -508,6 +508,30 @@ class Installer:
 
         return str(desktop_file)
 
+    def _create_desktop_entry_for_app(
+        self,
+        name: str,
+        display_name: str,
+        exec_path: str,
+        icon_path: Optional[str] = None,
+        category: str = "Utility",
+        terminal: bool = False,
+        comment: Optional[str] = None,
+        enabled: bool = True
+    ) -> Optional[str]:
+        """Helper to conditionally create desktop entry for an application"""
+        if not enabled:
+            return None
+        return self.create_desktop_entry(
+            name=name,
+            display_name=display_name,
+            exec_path=exec_path,
+            icon_path=icon_path,
+            category=category,
+            terminal=terminal,
+            comment=comment
+        )
+
     def remove_desktop_entry(self, desktop_path: Optional[str]):
         """Remove desktop entry and update database"""
         if not desktop_path:
@@ -613,17 +637,16 @@ class Installer:
         disp_name = display_name or slug.replace('-', ' ').title()
         ver = version or "1.0.0"
 
-        desktop_path = None
-        if create_desktop:
-            desktop_path = self.create_desktop_entry(
-                name=slug,
-                display_name=disp_name,
-                exec_path=str(exec_full),
-                icon_path=icon_full_str,
-                category=category,
-                terminal=terminal,
-                comment=description
-            )
+        desktop_path = self._create_desktop_entry_for_app(
+            name=slug,
+            display_name=disp_name,
+            exec_path=str(exec_full),
+            icon_path=icon_full_str,
+            category=category,
+            terminal=terminal,
+            comment=description,
+            enabled=create_desktop
+        )
 
         symlink_path = None
         if create_bin_symlink:
@@ -695,17 +718,16 @@ class Installer:
 
         disp_name = display_name or slug.replace('-', ' ').title()
 
-        desktop_path = None
-        if create_desktop:
-            desktop_path = self.create_desktop_entry(
-                name=slug,
-                display_name=disp_name,
-                exec_path=str(exec_full),
-                icon_path=icon_full_str,
-                category=category,
-                terminal=terminal,
-                comment=description
-            )
+        desktop_path = self._create_desktop_entry_for_app(
+            name=slug,
+            display_name=disp_name,
+            exec_path=str(exec_full),
+            icon_path=icon_full_str,
+            category=category,
+            terminal=terminal,
+            comment=description,
+            enabled=create_desktop
+        )
 
         symlink_path = None
         if create_bin_symlink:
@@ -809,16 +831,17 @@ class Installer:
             raise ArchiveError(f"Upgrade failed, restored previous state: {e}")
 
         desktop_entry_path = app["desktop_entry_path"]
-        if desktop_entry_path and Path(desktop_entry_path).exists():
-            desktop_entry_path = self.create_desktop_entry(
-                name=app["name"],
-                display_name=app["display_name"],
-                exec_path=str(final_exec_path),
-                icon_path=new_icon_path,
-                category=app.get("category", "Utility"),
-                terminal=bool(app.get("terminal")),
-                comment=app.get("description", "")
-            )
+        has_existing_desktop = bool(desktop_entry_path and Path(desktop_entry_path).exists())
+        desktop_entry_path = self._create_desktop_entry_for_app(
+            name=app["name"],
+            display_name=app["display_name"],
+            exec_path=str(final_exec_path),
+            icon_path=new_icon_path,
+            category=app.get("category", "Utility"),
+            terminal=bool(app.get("terminal")),
+            comment=app.get("description", ""),
+            enabled=has_existing_desktop
+        )
 
         symlink_path = app["symlink_path"]
         if symlink_path:
