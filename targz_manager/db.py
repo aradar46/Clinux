@@ -18,7 +18,6 @@ DEFAULT_OPTIONS = {
         {"id": "apps", "name": "Portable Apps", "visible": True, "category": "DEVELOPMENT"},
         {"id": "ai", "name": "AI & Skills", "visible": True, "category": "AI & SKILLS"},
         {"id": "dotfiles", "name": "Dotfiles", "visible": True, "category": "PERSONAL"},
-        {"id": "projects", "name": "Projects", "visible": True, "category": "DEVELOPMENT"},
         {"id": "security", "name": "Security", "visible": True, "category": "SYSTEM"},
         {"id": "services", "name": "Services", "visible": False, "category": "SYSTEM"},
         {"id": "network", "name": "Network", "visible": False, "category": "SYSTEM"},
@@ -223,7 +222,9 @@ class Database:
                     res[k] = v
             return res
         elif isinstance(default, list) and isinstance(user, list):
-            # For list of tabs, retain user's ordered list if present
+            valid_ids = {t.get("id") for t in default if isinstance(t, dict) and "id" in t}
+            if valid_ids:
+                return [t for t in user if not isinstance(t, dict) or t.get("id") in valid_ids]
             return user
         else:
             return user

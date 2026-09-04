@@ -64,13 +64,13 @@
 
         <div class="sidebar-divider"></div>
         <div class="nav-item" id="navOptions" onclick="app.setTab('options')">
-          <span>  Options</span>
+          <span>Options</span>
         </div>
         <div class="nav-item" id="navAbout" onclick="app.openAboutModal()">
-          <span>  About</span>
+          <span>About</span>
         </div>
         <div class="nav-item" id="navQuit" onclick="app.quitApp()">
-          <span>  Quit</span>
+          <span>Quit</span>
         </div>
 
         <div class="sidebar-divider"></div>
@@ -511,15 +511,6 @@
           <div id="securityChecksList" style="display:flex; flex-direction:column; gap:8px;"></div>
         </div>
 
-        <!-- VIEW 9: PROJECTS PANEL -->
-        <div id="projectsView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
-          <div class="retro-panel-title">DEVELOPER PROJECTS & REPOSITORIES</div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>Discovered projects in ~/Projects, ~/src, ~/Code, and development folders.</div>
-            <button class="retro-btn" onclick="app.fetchProjectsList()">Re-Scan</button>
-          </div>
-          <div id="projectsListGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:10px;"></div>
-        </div>
 
         <!-- VIEW 10: NETWORK PANEL -->
         <div id="networkView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
@@ -876,19 +867,17 @@
         <button class="win-btn" onclick="app.closeModal('aboutModal')" aria-label="Close dialog" title="Close dialog">X</button>
       </div>
       <div class="modal-body">
-        <div class="terminal-box" style="text-align:center; padding:16px;">
-          <img src="/static/icon.png" alt="Clinux" style="width:64px; height:64px; image-rendering:pixelated; margin-bottom:8px;">
+        <div class="terminal-box" style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:20px 16px;">
+          <img src="/static/icon.png" alt="Clinux" style="display:block; margin:0 auto 10px auto; width:64px; height:64px; image-rendering:pixelated;">
           <div style="font-weight:bold; font-size:16px; color:var(--c-terminal-green-bright);">CLINUX 1.0</div>
-          <div style="color:var(--text-muted); font-size:11px; margin-bottom:12px;">Linux Cleaner, Portable App Manager, AI Skill Switcher & Dotfiles Toolbox</div>
-          <div style="border-top:1px dashed var(--c-terminal-green); padding-top:8px; font-size:11px; text-align:left;">
-            <div>• Python Standard Library only — Zero external dependencies</div>
-            <div>• Target Python: 3.8+ compatibility</div>
-            <div>• Authentic 1990s / early 2000s vintage Linux utility aesthetic</div>
-            <div>• License: GPL-3.0</div>
+          <div style="margin:6px 0 10px 0;">
+            <a href="https://github.com/aradar46/Clinux" target="_blank" rel="noopener noreferrer" style="color:var(--c-terminal-green-bright); text-decoration:underline; font-size:11px;">https://github.com/aradar46/Clinux</a>
           </div>
+          <div style="color:var(--text-muted); font-size:11px;">Linux Cleaner, Portable App Manager, AI Skill Switcher & Dotfiles Toolbox</div>
         </div>
       </div>
       <div class="modal-footer">
+        <button class="retro-btn retro-btn-warn" onclick="app.triggerDirectUpdate()">[ U ] UPDATE</button>
         <button class="retro-btn retro-btn-green" onclick="app.closeModal('aboutModal')">Close</button>
       </div>
     </div>
