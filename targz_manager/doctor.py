@@ -6,8 +6,6 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Any
 
-from clinux.runner import runner
-
 class SystemDoctor:
     def __init__(self, cleaner=None):
         self.cleaner = cleaner
@@ -182,7 +180,7 @@ class SystemDoctor:
             cmd_args = shlex.split(cmd)
             if not cmd_args:
                 return False
-            res = runner.run(cmd_args, check=True)
-            return res.success
+            res = subprocess.run(cmd_args, capture_output=True, text=True, check=True)
+            return res.returncode == 0
         except Exception:
             return False

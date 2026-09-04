@@ -33,15 +33,15 @@ class TestSystemDoctor(unittest.TestCase):
         self.assertFalse(res)
 
     def test_fix_command_execution(self):
-        with mock.patch("targz_manager.doctor.runner.run") as mock_run:
-            mock_run.return_value.success = True
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
             problem = {
                 "type": "failed_service",
                 "fix_command": "sudo systemctl restart failed.service"
             }
             res = self.doctor.fix(problem)
             self.assertTrue(res)
-            mock_run.assert_called_once_with(["sudo", "systemctl", "restart", "failed.service"], check=True)
+            mock_run.assert_called_once_with(["sudo", "systemctl", "restart", "failed.service"], capture_output=True, text=True, check=True)
 
     def test_fix_command_injection_prevention(self):
         test_canary = os.path.join(tempfile.gettempdir(), "doctor_injection_canary.txt")
