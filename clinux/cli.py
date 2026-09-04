@@ -205,462 +205,455 @@ Examples:
     return parser
 
 
-def run_cli(args_list: Optional[List[str]] = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(args_list)
+def _handle_list_cmd(args, is_json: bool) -> int:
+    apps_mod = registry.get("apps")
+    data = apps_mod.run_action("list")
+    if is_json:
+        print(json.dumps(data, indent=2))
+    else:
+        print_cli_table(data.get("apps", []))
+    return 0
 
-    is_json = getattr(args, "json", False)
+
+def _handle_clean_cmd(args, is_json: bool) -> int:
+    clean_mod = registry.get("cleaner")
+    scan_data = clean_mod.scan()
+    if is_json:
+        print(json.dumps(scan_data, indent=2))
+        return 0
+
+    print("\n🔍 Scanning package manager caches and junk files...")
+    print(f"\n{'='*85}")
+    print(f"{'ID':<14} {'NAME':<24} {'CATEGORY':<16} {'SIZE':<10} {'FILES':<8} {'PATH'}")
+    print(f"{'-'*85}")
+    for t in scan_data["targets"]:
+        p_str = t['path']
+        if len(p_str) > 28:
+            p_str = "..." + p_str[-25:]
+        print(f"{t['id']:<14} {t['name'][:22]:<24} {t['category'][:14]:<16} {t['size_formatted']:<10} {t['file_count']:<8} {p_str}")
+    print(f"{'='*85}")
+    print(f"Total reclaimable space: \033[1;32m{scan_data['total_size_formatted']}\033[0m ({scan_data['total_files']} files)\n")
 
     if getattr(args, "dry_run", False):
-        runner.dry_run = True
-
-    if args.install_desktop_entry:
-        install_desktop_shortcut_for_manager()
-        if not args.command:
-            return 0
-
-    db_path = Path(args.db) if args.db else None
-    db = Database(db_path)
-    installer = Installer(db)
-
-    # CLI subcommands dispatching
-    if args.command == "list":
-        apps_mod = registry.get("apps")
-        data = apps_mod.run_action("list")
-        if is_json:
-            print(json.dumps(data, indent=2))
-        else:
-            print_cli_table(data.get("apps", []))
+        print("Dry run completed. No files were deleted.")
         return 0
 
-    elif args.command == "clean":
-        clean_mod = registry.get("cleaner")
-        scan_data = clean_mod.scan()
-        if is_json:
-            print(json.dumps(scan_data, indent=2))
-            return 0
-
-        print("\n🔍 Scanning package manager caches and junk files...")
-        print(f"\n{'='*85}")
-        print(f"{'ID':<14} {'NAME':<24} {'CATEGORY':<16} {'SIZE':<10} {'FILES':<8} {'PATH'}")
-        print(f"{'-'*85}")
-        for t in scan_data["targets"]:
-            p_str = t['path']
-            if len(p_str) > 28:
-                p_str = "..." + p_str[-25:]
-            print(f"{t['id']:<14} {t['name'][:22]:<24} {t['category'][:14]:<16} {t['size_formatted']:<10} {t['file_count']:<8} {p_str}")
-        print(f"{'='*85}")
-        print(f"Total reclaimable space: \033[1;32m{scan_data['total_size_formatted']}\033[0m ({scan_data['total_files']} files)\n")
-
-        if getattr(args, "dry_run", False):
-            print("Dry run completed. No files were deleted.")
-            return 0
-
-        to_clean = []
-        if args.targets:
-            to_clean = [t.strip() for t in args.targets.split(",") if t.strip()]
-        elif args.all:
-            to_clean = [t["id"] for t in scan_data["targets"]]
-        else:
-            print("Select targets to clean (comma-separated IDs, 'all' for everything, or 'q' to quit):")
-            try:
-                user_in = input("> ").strip()
-                if not user_in or user_in.lower() == 'q':
-                    print("Cancelled.")
-                    return 0
-                if user_in.lower() == 'all':
-                    to_clean = [t["id"] for t in scan_data["targets"]]
-                else:
-                    to_clean = [t.strip() for t in user_in.split(",") if t.strip()]
-            except (KeyboardInterrupt, EOFError):
-                print("\nCancelled.")
+    to_clean = []
+    if args.targets:
+        to_clean = [t.strip() for t in args.targets.split(",") if t.strip()]
+    elif args.all:
+        to_clean = [t["id"] for t in scan_data["targets"]]
+    else:
+        print("Select targets to clean (comma-separated IDs, 'all' for everything, or 'q' to quit):")
+        try:
+            user_in = input("> ").strip()
+            if not user_in or user_in.lower() == 'q':
+                print("Cancelled.")
                 return 0
-
-        if to_clean:
-            res = clean_mod.run_action("clean", target_ids=to_clean)
-            print(f"\n✨ Clean complete. Total space freed: {res['freed_formatted']}\n")
-        return 0
-
-    elif args.command == "doctor":
-        sec_mod = registry.get("security")
-        results = sec_mod.scan()
-        if is_json:
-            print(json.dumps(results, indent=2))
+            if user_in.lower() == 'all':
+                to_clean = [t["id"] for t in scan_data["targets"]]
+            else:
+                to_clean = [t.strip() for t in user_in.split(",") if t.strip()]
+        except (KeyboardInterrupt, EOFError):
+            print("\nCancelled.")
             return 0
 
-        print("\n🔍 Running System Doctor...")
-        print("\n" + "=" * 80)
-        print("  SYSTEM DOCTOR")
-        print("=" * 80)
+    if to_clean:
+        res = clean_mod.run_action("clean", target_ids=to_clean)
+        print(f"\n✨ Clean complete. Total space freed: {res['freed_formatted']}\n")
+    return 0
 
-        def print_status(count, label):
-            if count > 0:
-                print(f"[!] {count} {label}")
-            else:
-                print(f"[✓] {label.capitalize().replace('failed ', '').replace('broken ', '').replace('old ', '')} healthy")
 
-        print_status(len(results["failed_services"]), "failed systemd services")
-        print_status(len(results["old_kernels"]), "old kernels")
-        if results["reclaimable_cache"] > 0:
-            print(f"[!] {results['reclaimable_cache_formatted']} reclaimable cache")
+def _handle_doctor_cmd(args, is_json: bool) -> int:
+    sec_mod = registry.get("security")
+    results = sec_mod.scan()
+    if is_json:
+        print(json.dumps(results, indent=2))
+        return 0
+
+    print("\n🔍 Running System Doctor...")
+    print("\n" + "=" * 80)
+    print("  SYSTEM DOCTOR")
+    print("=" * 80)
+
+    def print_status(count, label):
+        if count > 0:
+            print(f"[!] {count} {label}")
         else:
-            print(f"[✓] Caches clean")
-        print_status(len(results["filesystem"]), "filesystem")
-        print_status(len(results["network"]), "network")
-        print_status(len(results["broken_desktop_entries"]), "broken desktop entries")
+            print(f"[✓] {label.capitalize().replace('failed ', '').replace('broken ', '').replace('old ', '')} healthy")
 
-        problems = results["all_problems"]
+    print_status(len(results["failed_services"]), "failed systemd services")
+    print_status(len(results["old_kernels"]), "old kernels")
+    if results["reclaimable_cache"] > 0:
+        print(f"[!] {results['reclaimable_cache_formatted']} reclaimable cache")
+    else:
+        print(f"[✓] Caches clean")
+    print_status(len(results["filesystem"]), "filesystem")
+    print_status(len(results["network"]), "network")
+    print_status(len(results["broken_desktop_entries"]), "broken desktop entries")
 
-        if problems:
-            print(f"\nPotential fixes: {sum(1 for p in problems if p['fixable'])}")
+    problems = results["all_problems"]
+
+    if problems:
+        print(f"\nPotential fixes: {sum(1 for p in problems if p['fixable'])}")
+        print("-" * 80)
+
+        for p in problems:
+            print(f"Problem: {p['description']}")
+            if p['fix_command']:
+                print(f"Suggested fix: {p['fix_command']}")
+                if args.fix and p['fixable']:
+                    print("  [Auto-fixing...]")
+                    fix_res = sec_mod.run_action("fix")
+                    print(f"  ✓ Auto-fix completed ({fix_res.get('fixed_count', 0)} issue(s) resolved)")
+            print("-" * 40)
+    else:
+        print("\n✓ System is healthy!")
+
+    print("=" * 80 + "\n")
+    return 0
+
+
+def _handle_disk_cmd(args, is_json: bool) -> int:
+    stg_mod = registry.get("storage")
+    scan_data = stg_mod.scan()
+    if is_json:
+        print(json.dumps(scan_data, indent=2))
+        return 0
+
+    results = scan_data["disk"]
+    print("\n" + "=" * 80)
+    print("  STORAGE")
+    print("=" * 80)
+    print(f"Home                 {results['home_size_formatted']}")
+    print(f"AI Models            {results['ai_models_size_formatted']}")
+    print(f"Developer caches     {results['dev_caches_size_formatted']}")
+    print(f"Package caches       {results['pkg_caches_size_formatted']}")
+    print("=" * 80 + "\n")
+    return 0
+
+
+def _handle_skills_cmd(args, is_json: bool) -> int:
+    sk_mod = registry.get("skills")
+    tgt_list = [t.strip() for t in args.targets.split(",")] if args.targets else None
+
+    if args.activate:
+        res = sk_mod.run_action("activate", target=args.activate, is_category=args.category, agent_targets=tgt_list)
+        if is_json:
+            print(json.dumps(res, indent=2))
+            return 0
+        if args.category:
+            print(f"✓ Activated category '{args.activate}' ({res.get('count', 0)} skills).")
+        else:
+            if res.get("success"):
+                print(f"✓ Activated skill '{args.activate}' for: {', '.join(res.get('activated_targets', []))}")
+            else:
+                print(f"✗ Failed to activate: {res.get('error') or res.get('errors')}")
+        return 0
+
+    if args.deactivate:
+        res = sk_mod.run_action("deactivate", target=args.deactivate, is_category=args.category, agent_targets=tgt_list)
+        if is_json:
+            print(json.dumps(res, indent=2))
+            return 0
+        if args.category:
+            print(f"✓ Deactivated category '{args.deactivate}'.")
+        else:
+            if res.get("success"):
+                print(f"✓ Deactivated skill '{args.deactivate}'.")
+            else:
+                print(f"✗ Failed to deactivate: {res.get('error') or res.get('errors')}")
+        return 0
+
+    scan_data = sk_mod.scan()
+    if is_json:
+        print(json.dumps(scan_data, indent=2))
+        return 0
+
+    skills = scan_data["skills"]
+    cats = scan_data["categories"]
+    print("\n" + "=" * 85)
+    print(f"  AI AGENT SKILLS ({len(skills)} discovered across {len(cats)} categories)")
+    print("=" * 85)
+    print(f"{'STATUS':<8} {'CATEGORY':<20} {'SKILL NAME':<30} {'AGENTS'}")
+    print("-" * 85)
+    for s in skills:
+        status = "● ON" if s["active"] else "○ off"
+        active_ag = [k for k, v in s["active_targets"].items() if v]
+        ag_str = ", ".join(active_ag) if active_ag else "-"
+        print(f"{status:<8} {s['category'][:18]:<20} {s['name'][:28]:<30} {ag_str}")
+    print("=" * 85)
+    print("Commands:")
+    print("  python3 app.py skills --activate <category/name>")
+    print("  python3 app.py skills --deactivate <category/name>")
+    print("  python3 app.py skills --activate <category> --category\n")
+    return 0
+
+
+def _handle_ai_storage_cmd(args, is_json: bool) -> int:
+    stg_mod = registry.get("storage")
+
+    if args.delete_model:
+        res = stg_mod.run_action("delete_model", model_id=args.delete_model)
+        if is_json:
+            print(json.dumps(res, indent=2))
+            return 0
+        if res.get("success"):
+            print(f"✓ Deleted model '{args.delete_model}'. Freed: {res.get('freed_formatted', '-')}")
+        else:
+            print(f"✗ Failed to delete model: {res.get('error')}")
+        return 0
+
+    if args.clean_workspace:
+        res = stg_mod.run_action("clean_workspace", workspace_id=args.clean_workspace)
+        if is_json:
+            print(json.dumps(res, indent=2))
+            return 0
+        if res.get("success"):
+            print(f"✓ Cleaned workspace '{args.clean_workspace}'. Freed: {res.get('freed_formatted')}")
+        else:
+            print(f"✗ Failed to clean workspace: {res.get('error')}")
+        return 0
+
+    scan_data = stg_mod.scan()
+    data = scan_data["ai_storage"]
+    if is_json:
+        print(json.dumps(data, indent=2))
+        return 0
+
+    print("\n" + "=" * 80)
+    print("  LOCAL AI MODELS & WEIGHTS")
+    print("=" * 80)
+    if not data["models"]:
+        print("  No local Hugging Face, PyTorch, or Ollama models found.")
+    else:
+        print(f"{'SOURCE':<14} {'NAME':<42} {'SIZE':<12} {'ID'}")
+        print("-" * 80)
+        for m in data["models"]:
+            print(f"{m['source']:<14} {m['name'][:40]:<42} {m['size_formatted']:<12} {m['id']}")
+
+    print("\n" + "=" * 80)
+    print("  AI AGENT WORKSPACES & CACHES")
+    print("=" * 80)
+    if not data["workspaces"]:
+        print("  No agent workspaces detected.")
+    else:
+        print(f"{'ID':<18} {'NAME':<36} {'SIZE':<12} {'FILES'}")
+        print("-" * 80)
+        for w in data["workspaces"]:
+            print(f"{w['id']:<18} {w['name'][:34]:<36} {w['size_formatted']:<12} {w['file_count']}")
+
+    print("=" * 80)
+    print(f"Total AI Storage Footprint: \033[1;36m{data['total_size_formatted']}\033[0m\n")
+    return 0
+
+
+def _handle_export_cmd(args, is_json: bool) -> int:
+    mach_mod = registry.get("machine")
+    res = mach_mod.run_action("export", output_path=args.output)
+    if is_json:
+        print(json.dumps(res, indent=2))
+        return 0
+    print(f"\n📦 Export complete! Manifest saved to: {res['output_path']}\n")
+    return 0
+
+
+def _handle_restore_cmd(args, is_json: bool) -> int:
+    mach_mod = registry.get("machine")
+    res = mach_mod.run_action("restore", input_path=args.input)
+    if is_json:
+        print(json.dumps(res, indent=2))
+        return 0
+    print("\n" + "=" * 80)
+    print(f"  MACHINE RESTORE RESULTS: {args.input}")
+    print("=" * 80)
+    for r in res.get("results", []):
+        if r.startswith("Error:"):
+            print(f"\033[1;31m{r}\033[0m")
+        elif r.startswith("  -") or r.startswith("  ->"):
+            print(r)
+        else:
+            print(f"\033[1;34m{r}\033[0m")
+    print("=" * 80 + "\n")
+    return 0
+
+
+def _handle_dotfiles_cmd(args, is_json: bool) -> int:
+    dot_mod = registry.get("dotfiles")
+    if args.action == "status":
+        st = dot_mod.scan()
+        if is_json:
+            print(json.dumps(st, indent=2))
+            return 0
+        print("\n" + "=" * 80)
+        print(f"  DOTFILES STATUS: {st['repo_path']}")
+        print("=" * 80)
+        if not st["exists"]:
+            print(f"  Repo not found at {st['repo_path']}")
+        else:
+            script_icon = "✓" if st["has_script"] else "✗"
+            print(f"  Script:    {script_icon} {st['script_path']}")
+            if st["git"]["is_git"]:
+                git_state = "clean" if st["git"]["clean"] else f"dirty ({st['git']['modified_files']} modified)"
+                print(f"  Branch:    {st['git']['branch']} [{git_state}]")
+                print(f"  Latest:    {st['git']['last_commit']}")
             print("-" * 80)
-
-            for p in problems:
-                print(f"Problem: {p['description']}")
-                if p['fix_command']:
-                    print(f"Suggested fix: {p['fix_command']}")
-                    if args.fix and p['fixable']:
-                        print("  [Auto-fixing...]")
-                        fix_res = sec_mod.run_action("fix")
-                        print(f"  ✓ Auto-fix completed ({fix_res.get('fixed_count', 0)} issue(s) resolved)")
-                print("-" * 40)
+            print(f"  {'PACKAGE':<20} {'STATUS':<15} {'ACTION'}")
+            print("-" * 80)
+            for p in st["packages"]:
+                name = p["name"] if isinstance(p, dict) else p
+                stowed = p.get("stowed", False) if isinstance(p, dict) else False
+                status_str = "\033[1;32mstowed\033[0m" if stowed else "\033[1;30mnot stowed\033[0m"
+                hint = f"dotfiles unstow {name}" if stowed else f"dotfiles stow {name}"
+                print(f"  {name:<20} {status_str:<24} ({hint})")
+        print("=" * 80 + "\n")
+        return 0
+    else:
+        res = dot_mod.run_action("run_command", command=args.action, package=args.package, message=args.message)
+        if is_json:
+            print(json.dumps(res, indent=2))
+            return 0
+        if res.get("output"):
+            print(res["output"])
+        if not res.get("success"):
+            print(f"✗ Command failed: {res.get('error')}")
         else:
-            print("\n✓ System is healthy!")
-
-        print("=" * 80 + "\n")
+            print(f"✓ dotfiles {args.action} completed.")
+        print()
         return 0
 
-    elif args.command == "disk":
-        stg_mod = registry.get("storage")
-        scan_data = stg_mod.scan()
+
+def _handle_apps_cmd(args, is_json: bool, db: Database, installer: Installer) -> int:
+    apps_mod = registry.get("apps")
+    if args.command == "scan":
+        scan_res = apps_mod.scan()
         if is_json:
-            print(json.dumps(scan_data, indent=2))
+            print(json.dumps(scan_res, indent=2))
             return 0
-
-        results = scan_data["disk"]
-        print("\n" + "=" * 80)
-        print("  STORAGE")
-        print("=" * 80)
-        print(f"Home                 {results['home_size_formatted']}")
-        print(f"AI Models            {results['ai_models_size_formatted']}")
-        print(f"Developer caches     {results['dev_caches_size_formatted']}")
-        print(f"Package caches       {results['pkg_caches_size_formatted']}")
-        print("=" * 80 + "\n")
-        return 0
-
-    elif args.command == "skills":
-        sk_mod = registry.get("skills")
-        tgt_list = [t.strip() for t in args.targets.split(",")] if args.targets else None
-
-        if args.activate:
-            res = sk_mod.run_action("activate", target=args.activate, is_category=args.category, agent_targets=tgt_list)
-            if is_json:
-                print(json.dumps(res, indent=2))
-                return 0
-            if args.category:
-                print(f"✓ Activated category '{args.activate}' ({res.get('count', 0)} skills).")
-            else:
-                if res.get("success"):
-                    print(f"✓ Activated skill '{args.activate}' for: {', '.join(res.get('activated_targets', []))}")
-                else:
-                    print(f"✗ Failed to activate: {res.get('error') or res.get('errors')}")
+        discovered = scan_res["unmanaged_apps"]
+        if not discovered:
+            print("✓ No unmanaged applications found. Everything is organized!\n")
             return 0
-
-        if args.deactivate:
-            res = sk_mod.run_action("deactivate", target=args.deactivate, is_category=args.category, agent_targets=tgt_list)
-            if is_json:
-                print(json.dumps(res, indent=2))
-                return 0
-            if args.category:
-                print(f"✓ Deactivated category '{args.deactivate}'.")
-            else:
-                if res.get("success"):
-                    print(f"✓ Deactivated skill '{args.deactivate}'.")
-                else:
-                    print(f"✗ Failed to deactivate: {res.get('error') or res.get('errors')}")
-            return 0
-
-        scan_data = sk_mod.scan()
-        if is_json:
-            print(json.dumps(scan_data, indent=2))
-            return 0
-
-        skills = scan_data["skills"]
-        cats = scan_data["categories"]
         print("\n" + "=" * 85)
-        print(f"  AI AGENT SKILLS ({len(skills)} discovered across {len(cats)} categories)")
-        print("=" * 85)
-        print(f"{'STATUS':<8} {'CATEGORY':<20} {'SKILL NAME':<30} {'AGENTS'}")
+        print(f"{'TYPE':<15} {'NAME':<22} {'VERSION':<10} {'SIZE':<10} {'LOCATION'}")
         print("-" * 85)
-        for s in skills:
-            status = "● ON" if s["active"] else "○ off"
-            active_ag = [k for k, v in s["active_targets"].items() if v]
-            ag_str = ", ".join(active_ag) if active_ag else "-"
-            print(f"{status:<8} {s['category'][:18]:<20} {s['name'][:28]:<30} {ag_str}")
+        for d in discovered:
+            src_label = "Desktop Icon" if d.get("source") == "desktop_file" else ("Tarball" if d.get("is_tarball_archive") else "Folder Scan")
+            loc = d.get("install_path") or d.get("archive_path", "")
+            if len(loc) > 28:
+                loc = "..." + loc[-25:]
+            print(f"{src_label:<15} {d['display_name'][:20]:<22} {d.get('version', '1.0')[:8]:<10} {d.get('size_formatted', '-'):<10} {loc}")
         print("=" * 85)
-        print("Commands:")
-        print("  python3 app.py skills --activate <category/name>")
-        print("  python3 app.py skills --deactivate <category/name>")
-        print("  python3 app.py skills --activate <category> --category\n")
+        print(f"Found {len(discovered)} unmanaged application(s).")
+        print("To import all: python3 app.py import-discovered\n")
         return 0
 
-    elif args.command == "ai-storage":
-        stg_mod = registry.get("storage")
-
-        if args.delete_model:
-            res = stg_mod.run_action("delete_model", model_id=args.delete_model)
-            if is_json:
-                print(json.dumps(res, indent=2))
-                return 0
-            if res.get("success"):
-                print(f"✓ Deleted model '{args.delete_model}'. Freed: {res.get('freed_formatted', '-')}")
-            else:
-                print(f"✗ Failed to delete model: {res.get('error')}")
-            return 0
-
-        if args.clean_workspace:
-            res = stg_mod.run_action("clean_workspace", workspace_id=args.clean_workspace)
-            if is_json:
-                print(json.dumps(res, indent=2))
-                return 0
-            if res.get("success"):
-                print(f"✓ Cleaned workspace '{args.clean_workspace}'. Freed: {res.get('freed_formatted')}")
-            else:
-                print(f"✗ Failed to clean workspace: {res.get('error')}")
-            return 0
-
-        scan_data = stg_mod.scan()
-        data = scan_data["ai_storage"]
-        if is_json:
-            print(json.dumps(data, indent=2))
-            return 0
-
-        print("\n" + "=" * 80)
-        print("  LOCAL AI MODELS & WEIGHTS")
-        print("=" * 80)
-        if not data["models"]:
-            print("  No local Hugging Face, PyTorch, or Ollama models found.")
-        else:
-            print(f"{'SOURCE':<14} {'NAME':<42} {'SIZE':<12} {'ID'}")
-            print("-" * 80)
-            for m in data["models"]:
-                print(f"{m['source']:<14} {m['name'][:40]:<42} {m['size_formatted']:<12} {m['id']}")
-
-        print("\n" + "=" * 80)
-        print("  AI AGENT WORKSPACES & CACHES")
-        print("=" * 80)
-        if not data["workspaces"]:
-            print("  No agent workspaces detected.")
-        else:
-            print(f"{'ID':<18} {'NAME':<36} {'SIZE':<12} {'FILES'}")
-            print("-" * 80)
-            for w in data["workspaces"]:
-                print(f"{w['id']:<18} {w['name'][:34]:<36} {w['size_formatted']:<12} {w['file_count']}")
-
-        print("=" * 80)
-        print(f"Total AI Storage Footprint: \033[1;36m{data['total_size_formatted']}\033[0m\n")
-        return 0
-
-    elif args.command == "export":
-        mach_mod = registry.get("machine")
-        res = mach_mod.run_action("export", output_path=args.output)
+    elif args.command == "import-discovered":
+        res = apps_mod.run_action("import_discovered")
         if is_json:
             print(json.dumps(res, indent=2))
             return 0
-        print(f"\n📦 Export complete! Manifest saved to: {res['output_path']}\n")
+        print(f"\n✓ Successfully imported {res.get('count', 0)} application(s) into database!")
+        print_cli_table(db.list_apps())
         return 0
 
-    elif args.command == "restore":
-        mach_mod = registry.get("machine")
-        res = mach_mod.run_action("restore", input_path=args.input)
+    elif args.command == "inspect":
+        info = installer.inspect_archive(args.archive)
+        if is_json:
+            print(json.dumps(info, indent=2))
+            return 0
+        print("\n" + "=" * 60)
+        print(f"Archive:       {info['archive_filename']}")
+        print(f"Size:          {Database.format_size(info['archive_size_bytes'])}")
+        print(f"Uncompressed:  {Database.format_size(info['uncompressed_size_bytes'])} ({info['total_files']} files)")
+        print(f"Guessed Name:  {info['guessed_name']} ({info['guessed_display_name']})")
+        print(f"Guessed Ver:   {info['guessed_version']}")
+        print(f"Wrapper Dir:   {info['wrapper_folder'] if info['has_wrapper_folder'] else 'None'}")
+        print("\nDetected Executables:")
+        for ex in info['executables']:
+            print(f"  • {ex['path']} (score: {ex['score']})")
+        print("\nDetected Icons:")
+        for ic in info['icons']:
+            print(f"  • {ic['path']}")
+        print("=" * 60 + "\n")
+        return 0
+
+    elif args.command == "install":
+        insp = installer.inspect_archive(args.archive)
+        name = args.name or insp["guessed_name"]
+        disp_name = args.display_name or insp["guessed_display_name"]
+        ver = args.version or insp["guessed_version"]
+
+        res = apps_mod.run_action(
+            "install",
+            archive_path=args.archive,
+            name=name,
+            display_name=disp_name,
+            version=ver,
+            category=args.category,
+            install_path=args.dest,
+            create_desktop=not args.no_desktop,
+            create_bin_symlink=not args.no_symlink,
+        )
+        app = res["app"]
+        if is_json:
+            print(json.dumps(app, indent=2))
+            return 0
+        print(f"✓ Successfully installed {app['display_name']}!")
+        print(f"  Install Directory: {app['install_path']}")
+        print(f"  Executable:        {app['executable_path']}")
+        if app.get("desktop_entry_path"):
+            print(f"  Desktop Shortcut:  {app['desktop_entry_path']}")
+        if app.get("symlink_path"):
+            print(f"  Terminal Symlink:  {app['symlink_path']}")
+        return 0
+
+    elif args.command == "update":
+        app_ref = args.app_id_or_name
+        app = db.get_app(int(app_ref)) if app_ref.isdigit() else db.get_app_by_name(app_ref)
+        if not app:
+            print(f"Error: Application '{app_ref}' not found in database.", file=sys.stderr)
+            return 1
+        updated = installer.update_app(app_id=app["id"], archive_path=args.archive, new_version=args.version)
+        if is_json:
+            print(json.dumps(updated, indent=2))
+            return 0
+        print(f"✓ Updated {updated['display_name']} to v{updated['version']} successfully!")
+        return 0
+
+    elif args.command == "remove":
+        app_ref = args.app_id_or_name
+        app = db.get_app(int(app_ref)) if app_ref.isdigit() else db.get_app_by_name(app_ref)
+        if not app:
+            print(f"Error: Application '{app_ref}' not found in database.", file=sys.stderr)
+            return 1
+        res = apps_mod.run_action(
+            "remove",
+            app_id=app["id"],
+            delete_files=not args.keep_files,
+            delete_desktop=True,
+            delete_symlink=True,
+        )
         if is_json:
             print(json.dumps(res, indent=2))
             return 0
-        print("\n" + "=" * 80)
-        print(f"  MACHINE RESTORE RESULTS: {args.input}")
-        print("=" * 80)
-        for r in res.get("results", []):
-            if r.startswith("Error:"):
-                print(f"\033[1;31m{r}\033[0m")
-            elif r.startswith("  -") or r.startswith("  ->"):
-                print(r)
-            else:
-                print(f"\033[1;34m{r}\033[0m")
-        print("=" * 80 + "\n")
+        print(f"✓ Uninstalled {res['app_name']}. Freed {Database.format_size(res['bytes_freed'])}.")
         return 0
 
-    elif args.command == "dotfiles":
-        dot_mod = registry.get("dotfiles")
-        if args.action == "status":
-            st = dot_mod.scan()
-            if is_json:
-                print(json.dumps(st, indent=2))
-                return 0
-            print("\n" + "=" * 80)
-            print(f"  DOTFILES STATUS: {st['repo_path']}")
-            print("=" * 80)
-            if not st["exists"]:
-                print(f"  Repo not found at {st['repo_path']}")
-            else:
-                script_icon = "✓" if st["has_script"] else "✗"
-                print(f"  Script:    {script_icon} {st['script_path']}")
-                if st["git"]["is_git"]:
-                    git_state = "clean" if st["git"]["clean"] else f"dirty ({st['git']['modified_files']} modified)"
-                    print(f"  Branch:    {st['git']['branch']} [{git_state}]")
-                    print(f"  Latest:    {st['git']['last_commit']}")
-                print("-" * 80)
-                print(f"  {'PACKAGE':<20} {'STATUS':<15} {'ACTION'}")
-                print("-" * 80)
-                for p in st["packages"]:
-                    name = p["name"] if isinstance(p, dict) else p
-                    stowed = p.get("stowed", False) if isinstance(p, dict) else False
-                    status_str = "\033[1;32mstowed\033[0m" if stowed else "\033[1;30mnot stowed\033[0m"
-                    hint = f"dotfiles unstow {name}" if stowed else f"dotfiles stow {name}"
-                    print(f"  {name:<20} {status_str:<24} ({hint})")
-            print("=" * 80 + "\n")
-            return 0
-        else:
-            res = dot_mod.run_action("run_command", command=args.action, package=args.package, message=args.message)
-            if is_json:
-                print(json.dumps(res, indent=2))
-                return 0
-            if res.get("output"):
-                print(res["output"])
-            if not res.get("success"):
-                print(f"✗ Command failed: {res.get('error')}")
-            else:
-                print(f"✓ dotfiles {args.action} completed.")
-            print()
-            return 0
+    elif args.command == "launch":
+        app_ref = args.app_id_or_name
+        app = db.get_app(int(app_ref)) if app_ref.isdigit() else db.get_app_by_name(app_ref)
+        if not app:
+            print(f"Error: App '{app_ref}' not found.", file=sys.stderr)
+            return 1
+        installer.launch_app(app["id"])
+        print(f"✓ Launched {app['display_name']}")
+        return 0
 
-    elif args.command in ("scan", "import-discovered", "inspect", "install", "update", "remove", "launch"):
-        apps_mod = registry.get("apps")
-        if args.command == "scan":
-            scan_res = apps_mod.scan()
-            if is_json:
-                print(json.dumps(scan_res, indent=2))
-                return 0
-            discovered = scan_res["unmanaged_apps"]
-            if not discovered:
-                print("✓ No unmanaged applications found. Everything is organized!\n")
-                return 0
-            print("\n" + "=" * 85)
-            print(f"{'TYPE':<15} {'NAME':<22} {'VERSION':<10} {'SIZE':<10} {'LOCATION'}")
-            print("-" * 85)
-            for d in discovered:
-                src_label = "Desktop Icon" if d.get("source") == "desktop_file" else ("Tarball" if d.get("is_tarball_archive") else "Folder Scan")
-                loc = d.get("install_path") or d.get("archive_path", "")
-                if len(loc) > 28:
-                    loc = "..." + loc[-25:]
-                print(f"{src_label:<15} {d['display_name'][:20]:<22} {d.get('version', '1.0')[:8]:<10} {d.get('size_formatted', '-'):<10} {loc}")
-            print("=" * 85)
-            print(f"Found {len(discovered)} unmanaged application(s).")
-            print("To import all: python3 app.py import-discovered\n")
-            return 0
+    return 0
 
-        elif args.command == "import-discovered":
-            res = apps_mod.run_action("import_discovered")
-            if is_json:
-                print(json.dumps(res, indent=2))
-                return 0
-            print(f"\n✓ Successfully imported {res.get('count', 0)} application(s) into database!")
-            print_cli_table(db.list_apps())
-            return 0
 
-        elif args.command == "inspect":
-            info = installer.inspect_archive(args.archive)
-            if is_json:
-                print(json.dumps(info, indent=2))
-                return 0
-            print("\n" + "=" * 60)
-            print(f"Archive:       {info['archive_filename']}")
-            print(f"Size:          {Database.format_size(info['archive_size_bytes'])}")
-            print(f"Uncompressed:  {Database.format_size(info['uncompressed_size_bytes'])} ({info['total_files']} files)")
-            print(f"Guessed Name:  {info['guessed_name']} ({info['guessed_display_name']})")
-            print(f"Guessed Ver:   {info['guessed_version']}")
-            print(f"Wrapper Dir:   {info['wrapper_folder'] if info['has_wrapper_folder'] else 'None'}")
-            print("\nDetected Executables:")
-            for ex in info['executables']:
-                print(f"  • {ex['path']} (score: {ex['score']})")
-            print("\nDetected Icons:")
-            for ic in info['icons']:
-                print(f"  • {ic['path']}")
-            print("=" * 60 + "\n")
-            return 0
-
-        elif args.command == "install":
-            insp = installer.inspect_archive(args.archive)
-            name = args.name or insp["guessed_name"]
-            disp_name = args.display_name or insp["guessed_display_name"]
-            ver = args.version or insp["guessed_version"]
-
-            res = apps_mod.run_action(
-                "install",
-                archive_path=args.archive,
-                name=name,
-                display_name=disp_name,
-                version=ver,
-                category=args.category,
-                install_path=args.dest,
-                create_desktop=not args.no_desktop,
-                create_bin_symlink=not args.no_symlink,
-            )
-            app = res["app"]
-            if is_json:
-                print(json.dumps(app, indent=2))
-                return 0
-            print(f"✓ Successfully installed {app['display_name']}!")
-            print(f"  Install Directory: {app['install_path']}")
-            print(f"  Executable:        {app['executable_path']}")
-            if app.get("desktop_entry_path"):
-                print(f"  Desktop Shortcut:  {app['desktop_entry_path']}")
-            if app.get("symlink_path"):
-                print(f"  Terminal Symlink:  {app['symlink_path']}")
-            return 0
-
-        elif args.command == "update":
-            app_ref = args.app_id_or_name
-            app = db.get_app(int(app_ref)) if app_ref.isdigit() else db.get_app_by_name(app_ref)
-            if not app:
-                print(f"Error: Application '{app_ref}' not found in database.", file=sys.stderr)
-                return 1
-            updated = installer.update_app(app_id=app["id"], archive_path=args.archive, new_version=args.version)
-            if is_json:
-                print(json.dumps(updated, indent=2))
-                return 0
-            print(f"✓ Updated {updated['display_name']} to v{updated['version']} successfully!")
-            return 0
-
-        elif args.command == "remove":
-            app_ref = args.app_id_or_name
-            app = db.get_app(int(app_ref)) if app_ref.isdigit() else db.get_app_by_name(app_ref)
-            if not app:
-                print(f"Error: Application '{app_ref}' not found in database.", file=sys.stderr)
-                return 1
-            res = apps_mod.run_action(
-                "remove",
-                app_id=app["id"],
-                delete_files=not args.keep_files,
-                delete_desktop=True,
-                delete_symlink=True,
-            )
-            if is_json:
-                print(json.dumps(res, indent=2))
-                return 0
-            print(f"✓ Uninstalled {res['app_name']}. Freed {Database.format_size(res['bytes_freed'])}.")
-            return 0
-
-        elif args.command == "launch":
-            app_ref = args.app_id_or_name
-            app = db.get_app(int(app_ref)) if app_ref.isdigit() else db.get_app_by_name(app_ref)
-            if not app:
-                print(f"Error: App '{app_ref}' not found.", file=sys.stderr)
-                return 1
-            installer.launch_app(app["id"])
-            print(f"✓ Launched {app['display_name']}")
-            return 0
-
-    # Default action: Launch HTTP GUI server
+def _handle_server_cmd(args, installer: Installer) -> int:
     target_port = args.port or 8421
     host = args.host
     url = f"http://{host}:{target_port}/"
@@ -708,3 +701,47 @@ def run_cli(args_list: Optional[List[str]] = None) -> int:
             pass
 
     return 0
+
+
+def run_cli(args_list: Optional[List[str]] = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(args_list)
+
+    is_json = getattr(args, "json", False)
+
+    if getattr(args, "dry_run", False):
+        runner.dry_run = True
+
+    if args.install_desktop_entry:
+        install_desktop_shortcut_for_manager()
+        if not args.command:
+            return 0
+
+    db_path = Path(args.db) if args.db else None
+    db = Database(db_path)
+    installer = Installer(db)
+
+    # CLI subcommands dispatching
+    if args.command == "list":
+        return _handle_list_cmd(args, is_json)
+    elif args.command == "clean":
+        return _handle_clean_cmd(args, is_json)
+    elif args.command == "doctor":
+        return _handle_doctor_cmd(args, is_json)
+    elif args.command == "disk":
+        return _handle_disk_cmd(args, is_json)
+    elif args.command == "skills":
+        return _handle_skills_cmd(args, is_json)
+    elif args.command == "ai-storage":
+        return _handle_ai_storage_cmd(args, is_json)
+    elif args.command == "export":
+        return _handle_export_cmd(args, is_json)
+    elif args.command == "restore":
+        return _handle_restore_cmd(args, is_json)
+    elif args.command == "dotfiles":
+        return _handle_dotfiles_cmd(args, is_json)
+    elif args.command in ("scan", "import-discovered", "inspect", "install", "update", "remove", "launch"):
+        return _handle_apps_cmd(args, is_json, db, installer)
+
+    # Default action: Launch HTTP GUI server
+    return _handle_server_cmd(args, installer)
