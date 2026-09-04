@@ -43,7 +43,61 @@ class DiskAnalyzer:
         except Exception:
             pass
 
+        # Real filesystem disk usage via shutil.disk_usage
+        import shutil
+        total_bytes, used_bytes, free_bytes = 0, 0, 0
+        try:
+            usage = shutil.disk_usage(home_path)
+            total_bytes = usage.total
+            used_bytes = usage.used
+            free_bytes = usage.free
+        except Exception:
+            pass
+
+        disk_pct = round((used_bytes / total_bytes * 100)) if total_bytes > 0 else 0
+
+        # Calculate system health dynamically
+        failed_services_count = 0
+        try:
+            res = subprocess.run(["systemctl", "--failed", "--quiet"], capture_output=True, text=True)
+            if res.returncode == 0 and res.stdout.strip():
+                failed_services_count = len([line for line in res.stdout.strip().splitlines() if line])
+        except Exception:
+            pass
+
+        health_penalty = 0.0
+        if disk_pct > 90:
+            health_penalty += (disk_pct - 90) * 3 + 10
+        elif disk_pct > 80:
+            health_penalty += (disk_pct - 80) * 1.5
+
+        health_penalty += failed_services_count * 10
+
+        health_pct = max(10, min(100, round(100 - health_penalty)))
+        if health_pct >= 85:
+            health_status = "ALL SYSTEMS OPERATIONAL"
+        elif health_pct >= 60:
+            health_status = "ATTENTION REQUIRED"
+        else:
+            health_status = "CRITICAL DEGRADATION"
+
+        filled_blocks = round(health_pct / 100 * 24)
+        ascii_bar = "█" * filled_blocks + "░" * (24 - filled_blocks)
+        health_str = f"SYSTEM HEALTH: [{ascii_bar}] {health_pct}% — {health_status}"
+
         return {
+            "total_bytes": total_bytes,
+            "total_formatted": Database.format_size(total_bytes),
+            "used_bytes": used_bytes,
+            "used_formatted": Database.format_size(used_bytes),
+            "free_bytes": free_bytes,
+            "free_formatted": Database.format_size(free_bytes),
+            "usage_percent": disk_pct,
+            "health_percent": health_pct,
+            "health_status": health_status,
+            "health_ascii_bar": ascii_bar,
+            "health_display_str": health_str,
+            "failed_services_count": failed_services_count,
             "home_size_bytes": home_size,
             "home_size_formatted": Database.format_size(home_size),
             "ai_models_size_bytes": ai_size,

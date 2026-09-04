@@ -1,4 +1,5 @@
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -447,7 +448,7 @@ class SystemCleaner:
             needs_sudo = target.get("needs_sudo", False) or Installer.check_needs_sudo(path)
             sudo_cmd = target.get("sudo_command")
             if not sudo_cmd and needs_sudo:
-                sudo_cmd = f"sudo rm -rf '{path}'/*"
+                sudo_cmd = f"sudo rm -rf {shlex.quote(str(path))}/*"
 
             results.append({
                 "id": target["id"],
@@ -483,7 +484,7 @@ class SystemCleaner:
         Returns an error dictionary if execution fails, or None on success.
         """
         target_id = target["id"]
-        sudo_cmd = target.get("sudo_command") or f"sudo rm -rf '{path}'/*"
+        sudo_cmd = target.get("sudo_command") or f"sudo rm -rf {shlex.quote(str(path))}/*"
 
         if hasattr(os, "geteuid") and os.geteuid() == 0:
             if target_id == "pacman":
@@ -493,7 +494,7 @@ class SystemCleaner:
             elif target_id == "dnf":
                 subprocess.run(["dnf", "clean", "all"], check=False)
             else:
-                subprocess.run(["sh", "-c", f"rm -rf '{path}'/*"], check=False)
+                subprocess.run(["sh", "-c", f"rm -rf {shlex.quote(str(path))}/*"], check=False)
             return None
 
         if sudo_password:
@@ -504,7 +505,7 @@ class SystemCleaner:
             elif target_id == "dnf":
                 sub_cmd = ["dnf", "clean", "all"]
             else:
-                sub_cmd = ["sh", "-c", f"rm -rf '{path}'/*"]
+                sub_cmd = ["sh", "-c", f"rm -rf {shlex.quote(str(path))}/*"]
             cmd = ["sudo", "-S", "-k"] + sub_cmd
             res = subprocess.run(cmd, input=f"{sudo_password}\n", capture_output=True, text=True)
             if res.returncode != 0:
@@ -525,7 +526,17 @@ class SystemCleaner:
         if interactive:
             print(f"\n[sudo] Administrator permissions required for {target['name']}:")
             print(f"  Command: {sudo_cmd}")
-            res = subprocess.run(sudo_cmd, shell=True)
+            if target_id == "pacman":
+                cmd = ["sudo", "pacman", "-Scc"]
+            elif target_id == "apt":
+                cmd = ["sudo", "apt-get", "clean"]
+            elif target_id == "dnf":
+                cmd = ["sudo", "dnf", "clean", "all"]
+            elif sudo_cmd and not ("*" in sudo_cmd or ";" in sudo_cmd or "|" in sudo_cmd or "&" in sudo_cmd):
+                cmd = shlex.split(sudo_cmd)
+            else:
+                cmd = ["sudo", "sh", "-c", f"rm -rf {shlex.quote(str(path))}/*"]
+            res = subprocess.run(cmd)
             if res.returncode != 0:
                 return {
                     "id": target_id,
@@ -615,7 +626,7 @@ class SystemCleaner:
         needs_sudo = target.get("needs_sudo", False) or (path.exists() and Installer.check_needs_sudo(path))
         sudo_cmd = target.get("sudo_command")
         if not sudo_cmd and needs_sudo:
-            sudo_cmd = f"sudo rm -rf '{path}'/*"
+            sudo_cmd = f"sudo rm -rf {shlex.quote(str(path))}/*"
 
         if not path.exists() and not (needs_sudo and sudo_password):
             return {
@@ -687,4 +698,3 @@ class SystemCleaner:
             "freed_files": total_freed_files,
             "results": results
         }
-

@@ -5,6 +5,7 @@ import subprocess
 import mimetypes
 import tempfile
 import urllib.parse
+import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from pathlib import Path
@@ -20,6 +21,7 @@ from .installer import (
 )
 from .scanner import SystemScanner
 from .cleaner import SystemCleaner
+from .disk_analyzer import DiskAnalyzer
 from .ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
 from .dotfiles_manager import DotfilesManager
 from .security import SecurityAuditor
@@ -100,6 +102,7 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         self.db = self.installer.db
         self.scanner = SystemScanner(self.db, self.installer)
         self.cleaner = SystemCleaner()
+        self.disk_analyzer = DiskAnalyzer(cleaner=self.cleaner)
         self.skill_manager = SkillManager()
         self.ai_storage = AIStorageManager()
         self.dotfiles_manager = DotfilesManager()
@@ -193,6 +196,8 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._handle_network_status()
         elif path == '/api/doctor':
             self._handle_api_doctor()
+        elif path == '/api/services':
+            self._handle_api_services()
         elif path == '/api/cleaner/scan':
             self._handle_api_cleaner_scan()
         elif path == '/api/ai/skills':
@@ -251,8 +256,63 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404, "Icon Not Found")
 
+    def _handle_api_services(self):
+        services = []
+        known_units = ["docker.service", "ollama.service", "bluetooth.service", "cups.service", "ssh.service", "sshd.service", "cron.service", "nginx.service", "systemd-resolved.service"]
+
+        # Query systemctl for status of units
+        for unit in known_units:
+            try:
+                res = subprocess.run(
+                    ["systemctl", "is-active", unit],
+                    capture_output=True, text=True, timeout=2
+                )
+                active_state = res.stdout.strip() if res.returncode == 0 else "inactive"
+
+                res_enabled = subprocess.run(
+                    ["systemctl", "is-enabled", unit],
+                    capture_output=True, text=True, timeout=2
+                )
+                enabled_state = res_enabled.stdout.strip() if res_enabled.returncode == 0 else "disabled"
+
+                # Get PID or port if active
+                pid_port = "-"
+                if active_state in ("active", "running"):
+                    res_show = subprocess.run(
+                        ["systemctl", "show", unit, "--property=MainPID"],
+                        capture_output=True, text=True, timeout=2
+                    )
+                    if res_show.returncode == 0 and "MainPID=" in res_show.stdout:
+                        pid = res_show.stdout.strip().split("=")[1]
+                        if pid and pid != "0":
+                            pid_port = f"PID {pid}"
+
+                services.append({
+                    "name": unit,
+                    "active": active_state == "active",
+                    "state": active_state.upper(),
+                    "boot": enabled_state.upper(),
+                    "pid_port": pid_port
+                })
+            except Exception:
+                pass
+
+        # If systemctl is not available or returned no units, provide fallback mock/local service list
+        if not services:
+            services = [
+                {"name": "docker.service", "active": False, "state": "STOPPED", "boot": "DISABLED", "pid_port": "-"},
+                {"name": "ollama.service", "active": False, "state": "STOPPED", "boot": "DISABLED", "pid_port": "-"},
+                {"name": "bluetooth.service", "active": False, "state": "STOPPED", "boot": "DISABLED", "pid_port": "-"},
+                {"name": "cups.service", "active": False, "state": "STOPPED", "boot": "DISABLED", "pid_port": "-"},
+                {"name": "ssh.service", "active": False, "state": "STOPPED", "boot": "DISABLED", "pid_port": "-"}
+            ]
+
+        self._send_json({"services": services})
+
     def _handle_api_stats(self):
         stats = self.db.get_stats()
+        disk_data = self.disk_analyzer.analyze()
+        stats["disk"] = disk_data
         self._send_json({"stats": stats})
 
     def _handle_api_system_info(self):
@@ -698,6 +758,36 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": True, "options": opts})
                 return
 
+            elif path == '/api/services/control':
+                service_name = body.get('service')
+                action = body.get('action') # start, stop, restart, reset, enable, disable
+                if not service_name or not action:
+                    self._send_error_json("service and action are required", status=400)
+                    return
+
+                # Sanitize action
+                valid_actions = {"start": "start", "stop": "stop", "restart": "restart", "reset": "restart", "reload": "reload", "enable": "enable", "disable": "disable"}
+                sys_action = valid_actions.get(action.lower())
+                if not sys_action:
+                    self._send_error_json(f"Invalid service action: {action}", status=400)
+                    return
+
+                # Run systemctl command
+                cmd = ["systemctl", sys_action, service_name]
+                if os.geteuid() != 0:
+                    cmd = ["sudo", "-n", "systemctl", sys_action, service_name]
+
+                try:
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                    if res.returncode == 0:
+                        self._send_json({"success": True, "message": f"Service {service_name} {sys_action}ed successfully"})
+                    else:
+                        err_msg = res.stderr.strip() or f"systemctl {sys_action} returned exit code {res.returncode}"
+                        self._send_json({"success": False, "error": err_msg, "needs_sudo": "sudo" in err_msg or res.returncode == 1}, status=200)
+                except Exception as e:
+                    self._send_json({"success": False, "error": str(e)}, status=500)
+                return
+
             elif path == '/api/cleaner/clean':
                 target_ids = body.get('targets', [])
                 sudo_password = body.get('password')
@@ -771,7 +861,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 return
 
             elif path == '/api/self-update':
-                cmd = "curl -fsSL https://raw.githubusercontent.com/aradar46/Clinux/main/install.sh | bash"
                 env = os.environ.copy()
                 env["HOME"] = str(Path.home())
                 env["PATH"] = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
@@ -792,14 +881,39 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                         local_pull_out = f"Git pull notice: {e}"
 
                 try:
-                    res = subprocess.run(
-                        cmd,
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                        env=env
-                    )
+                    install_sh_path = cwd / "install.sh"
+                    repo_root_install_sh = Path(__file__).parent.parent / "install.sh"
+                    if install_sh_path.exists():
+                        target_script = str(install_sh_path.resolve())
+                        res = subprocess.run(
+                            ["bash", target_script],
+                            capture_output=True,
+                            text=True,
+                            timeout=120,
+                            env=env
+                        )
+                    elif repo_root_install_sh.exists():
+                        target_script = str(repo_root_install_sh.resolve())
+                        res = subprocess.run(
+                            ["bash", target_script],
+                            capture_output=True,
+                            text=True,
+                            timeout=120,
+                            env=env
+                        )
+                    else:
+                        url = "https://raw.githubusercontent.com/aradar46/Clinux/main/install.sh"
+                        with urllib.request.urlopen(url, timeout=30) as resp:
+                            script_content = resp.read().decode("utf-8")
+                        res = subprocess.run(
+                            ["bash"],
+                            input=script_content,
+                            capture_output=True,
+                            text=True,
+                            timeout=120,
+                            env=env
+                        )
+
                     combined_output = "\n".join(filter(None, [local_pull_out, res.stdout, res.stderr])).strip()
                     self._send_json({
                         "success": res.returncode == 0,

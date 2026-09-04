@@ -4,7 +4,7 @@ import sqlite3
 import datetime
 from contextlib import contextmanager
 from pathlib import Path
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Set
 
 DEFAULT_DB_DIR = Path.home() / ".local" / "share" / "clinux"
 DEFAULT_DB_PATH = DEFAULT_DB_DIR / "apps.db"
@@ -357,6 +357,12 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM ignored_discoveries ORDER BY ignored_at DESC")
             return [dict(row) for row in cursor.fetchall()]
+
+    def get_ignored_keys_set(self) -> Set[str]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT key FROM ignored_discoveries")
+            return {row["key"] for row in cursor.fetchall()}
 
     def get_stats(self) -> Dict[str, Any]:
         with self._get_connection() as conn:

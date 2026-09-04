@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 import urllib.request
 import json
@@ -113,6 +114,63 @@ class TestSystemCleaner(unittest.TestCase):
         self.assertTrue(all(r["success"] for r in res["results"]))
         self.assertEqual(len(list(self.mock_yay.iterdir())), 0)
         self.assertEqual(len(list(self.mock_pip.iterdir())), 0)
+
+    @mock.patch("targz_manager.cleaner.subprocess.run")
+    def test_interactive_clean_no_shell_true(self, mock_run):
+        mock_run.return_value = mock.MagicMock(returncode=0)
+        sudo_dir = self.base_path / "sudo_dir"
+        sudo_dir.mkdir(parents=True, exist_ok=True)
+        (sudo_dir / "file.txt").write_bytes(b"data")
+
+        self.cleaner.TARGET_DEFINITIONS.append({
+            "id": "test_sudo",
+            "name": "Sudo Cache",
+            "category": "system",
+            "path": sudo_dir,
+            "description": "Requires sudo",
+            "safe_to_clean": True,
+            "needs_sudo": True,
+            "default_checked": True,
+        })
+
+        res = self.cleaner.clean_target("test_sudo", interactive=True)
+        mock_run.assert_called_once()
+        args, kwargs = mock_run.call_args
+        # Verify shell=True is NOT passed
+        self.assertNotIn("shell", kwargs)
+        self.assertFalse(kwargs.get("shell", False))
+        # Verify command argument is a list, not a string
+        cmd_arg = args[0]
+        self.assertIsInstance(cmd_arg, list)
+        self.assertEqual(cmd_arg[0], "sudo")
+
+    @mock.patch("targz_manager.cleaner.subprocess.run")
+    def test_interactive_clean_path_injection_quoted(self, mock_run):
+        mock_run.return_value = mock.MagicMock(returncode=0)
+        malicious_dir = self.base_path / "cache; echo injected"
+        malicious_dir.mkdir(parents=True, exist_ok=True)
+
+        self.cleaner.TARGET_DEFINITIONS.append({
+            "id": "test_malicious",
+            "name": "Malicious Cache",
+            "category": "system",
+            "path": malicious_dir,
+            "description": "Path injection test",
+            "safe_to_clean": True,
+            "needs_sudo": True,
+            "default_checked": True,
+        })
+
+        res = self.cleaner.clean_target("test_malicious", interactive=True)
+        mock_run.assert_called_once()
+        args, kwargs = mock_run.call_args
+        self.assertFalse(kwargs.get("shell", False))
+        cmd_arg = args[0]
+        self.assertIsInstance(cmd_arg, list)
+        # Shell command string passed to sh -c should contain quoted path
+        full_cmd_str = " ".join(cmd_arg)
+        self.assertIn("sh", cmd_arg)
+        self.assertIn("cache; echo injected", full_cmd_str)
 
 
 class TestCleanerHttpApi(unittest.TestCase):
