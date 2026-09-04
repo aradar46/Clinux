@@ -2,6 +2,7 @@ import os
 import json
 import sqlite3
 import datetime
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Set
@@ -77,6 +78,7 @@ DEFAULT_OPTIONS = {
 
 class Database:
     def __init__(self, db_path: Optional[Path] = None):
+        self._local = threading.local()
         if db_path is None:
             DEFAULT_DB_DIR.mkdir(parents=True, exist_ok=True)
             if OLD_DB_PATH.exists() and not DEFAULT_DB_PATH.exists():
@@ -94,12 +96,42 @@ class Database:
 
     @contextmanager
     def _get_connection(self):
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            try:
+                _ = conn.total_changes
+            except (sqlite3.ProgrammingError, sqlite3.OperationalError):
+                conn = None
+                self._local.conn = None
+
+        if conn is None:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            self._local.conn = conn
+
         try:
             yield conn
-        finally:
-            conn.close()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+
+    def close(self):
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            self._local.conn = None
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def init_db(self):
         with self._get_connection() as conn:
