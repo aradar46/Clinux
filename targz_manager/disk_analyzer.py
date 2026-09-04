@@ -1,7 +1,7 @@
 import os
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, Any
 from .db import Database
 
 class DiskAnalyzer:
