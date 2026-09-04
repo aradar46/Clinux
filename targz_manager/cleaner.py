@@ -471,6 +471,130 @@ class SystemCleaner:
             "total_files": total_files
         }
 
+    def _clean_with_sudo(
+        self,
+        target: Dict[str, Any],
+        path: Path,
+        sudo_password: Optional[str],
+        interactive: bool
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Execute privileged clean commands using sudo or root privileges.
+        Returns an error dictionary if execution fails, or None on success.
+        """
+        target_id = target["id"]
+        sudo_cmd = target.get("sudo_command") or f"sudo rm -rf '{path}'/*"
+
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            if target_id == "pacman":
+                subprocess.run(["pacman", "-Scc", "--noconfirm"], check=False)
+            elif target_id == "apt":
+                subprocess.run(["apt-get", "clean"], check=False)
+            elif target_id == "dnf":
+                subprocess.run(["dnf", "clean", "all"], check=False)
+            else:
+                subprocess.run(["sh", "-c", f"rm -rf '{path}'/*"], check=False)
+            return None
+
+        if sudo_password:
+            if target_id == "pacman":
+                sub_cmd = ["pacman", "-Scc", "--noconfirm"]
+            elif target_id == "apt":
+                sub_cmd = ["apt-get", "clean"]
+            elif target_id == "dnf":
+                sub_cmd = ["dnf", "clean", "all"]
+            else:
+                sub_cmd = ["sh", "-c", f"rm -rf '{path}'/*"]
+            cmd = ["sudo", "-S", "-k"] + sub_cmd
+            res = subprocess.run(cmd, input=f"{sudo_password}\n", capture_output=True, text=True)
+            if res.returncode != 0:
+                err = res.stderr.strip() or res.stdout.strip()
+                return {
+                    "id": target_id,
+                    "name": target["name"],
+                    "success": False,
+                    "freed_bytes": 0,
+                    "freed_formatted": "0 B",
+                    "freed_files": 0,
+                    "needs_sudo": True,
+                    "sudo_command": sudo_cmd,
+                    "error": "Incorrect sudo password" if ("incorrect" in err.lower() or "password" in err.lower() or "required" in err.lower()) else (err or "Clean failed")
+                }
+            return None
+
+        if interactive:
+            print(f"\n[sudo] Administrator permissions required for {target['name']}:")
+            print(f"  Command: {sudo_cmd}")
+            res = subprocess.run(sudo_cmd, shell=True)
+            if res.returncode != 0:
+                return {
+                    "id": target_id,
+                    "name": target["name"],
+                    "success": False,
+                    "freed_bytes": 0,
+                    "freed_formatted": "0 B",
+                    "freed_files": 0,
+                    "needs_sudo": True,
+                    "sudo_command": sudo_cmd,
+                    "error": "Sudo command cancelled or failed"
+                }
+            return None
+
+        return {
+            "id": target_id,
+            "name": target["name"],
+            "success": False,
+            "freed_bytes": 0,
+            "freed_formatted": "0 B",
+            "freed_files": 0,
+            "needs_sudo": True,
+            "sudo_command": sudo_cmd,
+            "error": f"Root privileges required. Run: {sudo_cmd}"
+        }
+
+    def _clean_with_extensions(self, target_id: str, path: Path, only_exts: Any) -> None:
+        """
+        Clean files in path that match specific extensions, including conda/mamba package clean.
+        """
+        if "conda" in target_id or "mamba" in target_id:
+            conda_bin = shutil.which("conda") or shutil.which("mamba")
+            if not conda_bin:
+                local_conda = path.parent / "bin" / "conda"
+                if local_conda.exists() and os.access(str(local_conda), os.X_OK):
+                    conda_bin = str(local_conda)
+            if conda_bin:
+                try:
+                    subprocess.run([conda_bin, "clean", "--tarballs", "-y"], capture_output=True, check=False)
+                except Exception:
+                    pass
+
+        if path.is_dir():
+            for item in path.iterdir():
+                try:
+                    if item.is_file() and item.name.endswith(only_exts):
+                        item.unlink()
+                except Exception:
+                    continue
+
+    def _clean_user_directory(self, target_id: str, path: Path) -> None:
+        """
+        Clean unprivileged user-owned files or directory content.
+        """
+        if target_id == "uv_cache" and shutil.which("uv"):
+            subprocess.run(["uv", "cache", "clean"], capture_output=True, check=False)
+        else:
+            if path.is_file():
+                path.unlink()
+            else:
+                for item in path.iterdir():
+                    try:
+                        if item.is_dir() and not item.is_symlink():
+                            shutil.rmtree(item)
+                        else:
+                            item.unlink()
+                    except Exception:
+                        continue
+
     def clean_target(self, target_id: str, sudo_password: Optional[str] = None, interactive: bool = False) -> Dict[str, Any]:
         """
         Clean an individual cache target by id.
@@ -509,105 +633,13 @@ class SystemCleaner:
 
         try:
             if needs_sudo:
-                if hasattr(os, "geteuid") and os.geteuid() == 0:
-                    if target_id == "pacman":
-                        subprocess.run(["pacman", "-Scc", "--noconfirm"], check=False)
-                    elif target_id == "apt":
-                        subprocess.run(["apt-get", "clean"], check=False)
-                    elif target_id == "dnf":
-                        subprocess.run(["dnf", "clean", "all"], check=False)
-                    else:
-                        subprocess.run(["sh", "-c", f"rm -rf '{path}'/*"], check=False)
-                elif sudo_password:
-                    if target_id == "pacman":
-                        sub_cmd = ["pacman", "-Scc", "--noconfirm"]
-                    elif target_id == "apt":
-                        sub_cmd = ["apt-get", "clean"]
-                    elif target_id == "dnf":
-                        sub_cmd = ["dnf", "clean", "all"]
-                    else:
-                        sub_cmd = ["sh", "-c", f"rm -rf '{path}'/*"]
-                    cmd = ["sudo", "-S", "-k"] + sub_cmd
-                    res = subprocess.run(cmd, input=f"{sudo_password}\n", capture_output=True, text=True)
-                    if res.returncode != 0:
-                        err = res.stderr.strip() or res.stdout.strip()
-                        return {
-                            "id": target_id,
-                            "name": target["name"],
-                            "success": False,
-                            "freed_bytes": 0,
-                            "freed_formatted": "0 B",
-                            "freed_files": 0,
-                            "needs_sudo": True,
-                            "sudo_command": sudo_cmd,
-                            "error": "Incorrect sudo password" if ("incorrect" in err.lower() or "password" in err.lower() or "required" in err.lower()) else (err or "Clean failed")
-                        }
-                elif interactive:
-                    print(f"\n[sudo] Administrator permissions required for {target['name']}:")
-                    print(f"  Command: {sudo_cmd}")
-                    res = subprocess.run(sudo_cmd, shell=True)
-                    if res.returncode != 0:
-                        return {
-                            "id": target_id,
-                            "name": target["name"],
-                            "success": False,
-                            "freed_bytes": 0,
-                            "freed_formatted": "0 B",
-                            "freed_files": 0,
-                            "needs_sudo": True,
-                            "sudo_command": sudo_cmd,
-                            "error": "Sudo command cancelled or failed"
-                        }
-                else:
-                    return {
-                        "id": target_id,
-                        "name": target["name"],
-                        "success": False,
-                        "freed_bytes": 0,
-                        "freed_formatted": "0 B",
-                        "freed_files": 0,
-                        "needs_sudo": True,
-                        "sudo_command": sudo_cmd,
-                        "error": f"Root privileges required. Run: {sudo_cmd}"
-                    }
-
+                error_response = self._clean_with_sudo(target, path, sudo_password, interactive)
+                if error_response:
+                    return error_response
             elif only_exts:
-                if "conda" in target_id or "mamba" in target_id:
-                    conda_bin = shutil.which("conda") or shutil.which("mamba")
-                    if not conda_bin:
-                        local_conda = path.parent / "bin" / "conda"
-                        if local_conda.exists() and os.access(str(local_conda), os.X_OK):
-                            conda_bin = str(local_conda)
-                    if conda_bin:
-                        try:
-                            subprocess.run([conda_bin, "clean", "--tarballs", "-y"], capture_output=True, check=False)
-                        except Exception:
-                            pass
-
-                if path.is_dir():
-                    for item in path.iterdir():
-                        try:
-                            if item.is_file() and item.name.endswith(only_exts):
-                                item.unlink()
-                        except Exception:
-                            continue
-
-            elif target_id == "uv_cache" and shutil.which("uv"):
-                subprocess.run(["uv", "cache", "clean"], capture_output=True, check=False)
-
+                self._clean_with_extensions(target_id, path, only_exts)
             else:
-                # User-owned directory: clean all items inside the directory
-                if path.is_file():
-                    path.unlink()
-                else:
-                    for item in path.iterdir():
-                        try:
-                            if item.is_dir() and not item.is_symlink():
-                                shutil.rmtree(item)
-                            else:
-                                item.unlink()
-                        except Exception:
-                            continue
+                self._clean_user_directory(target_id, path)
 
             new_size, new_files = self.get_directory_stats(path, only_extensions=only_exts)
             freed = max(0, initial_size - new_size)
