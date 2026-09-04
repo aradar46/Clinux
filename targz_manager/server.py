@@ -25,7 +25,6 @@ from .cleaner import SystemCleaner
 from .disk_analyzer import DiskAnalyzer
 from .ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
 from .dotfiles_manager import DotfilesManager
-from .security import SecurityAuditor
 
 import time
 import threading
@@ -107,7 +106,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         self.skill_manager = SkillManager()
         self.ai_storage = AIStorageManager()
         self.dotfiles_manager = DotfilesManager()
-        self.security_auditor = SecurityAuditor()
         super().__init__(*args, **kwargs)
 
     def log_message(self, format, *args):
@@ -189,14 +187,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._handle_api_system_info()
         elif path == '/api/options':
             self._handle_api_options()
-        elif path == '/api/security/scan':
-            self._handle_api_security_scan()
-        elif path == '/api/network/status':
-            self._handle_network_status()
-        elif path == '/api/doctor':
-            self._handle_api_doctor()
-        elif path == '/api/services':
-            self._handle_api_services()
         elif path == '/api/cleaner/scan':
             self._handle_api_cleaner_scan()
         elif path == '/api/ai/skills':
@@ -255,59 +245,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404, "Icon Not Found")
 
-    def _handle_api_services(self):
-        services = []
-        known_units = ["docker.service", "ollama.service", "bluetooth.service", "cups.service", "ssh.service", "sshd.service", "cron.service", "nginx.service", "systemd-resolved.service"]
-
-        # Query systemctl for status of units
-        for unit in known_units:
-            try:
-                res = subprocess.run(
-                    ["systemctl", "is-active", unit],
-                    capture_output=True, text=True, timeout=2
-                )
-                active_state = res.stdout.strip() if res.returncode == 0 else "inactive"
-
-                res_enabled = subprocess.run(
-                    ["systemctl", "is-enabled", unit],
-                    capture_output=True, text=True, timeout=2
-                )
-                enabled_state = res_enabled.stdout.strip() if res_enabled.returncode == 0 else "disabled"
-
-                # Get PID or port if active
-                pid_port = "-"
-                if active_state in ("active", "running"):
-                    res_show = subprocess.run(
-                        ["systemctl", "show", unit, "--property=MainPID"],
-                        capture_output=True, text=True, timeout=2
-                    )
-                    if res_show.returncode == 0 and "MainPID=" in res_show.stdout:
-                        pid = res_show.stdout.strip().split("=")[1]
-                        if pid and pid != "0":
-                            pid_port = f"PID {pid}"
-
-                services.append({
-                    "name": unit,
-                    "active": active_state == "active",
-                    "state": active_state.upper(),
-                    "boot": enabled_state.upper(),
-                    "pid_port": pid_port
-                })
-            except Exception:
-                pass
-
-        # If systemctl is not available or returned no units, provide fallback mock/local service list
-        if not services:
-            services = [
-                {"name": "docker.service", "active": False, "state": "STOPPED", "boot": "DISABLED", "pid_port": "-"},
-                {"name": "ollama.service", "active": False, "state": "STOPPED", "boot": "DISABLED", "pid_port": "-"},
-                {"name": "bluetooth.service", "active": False, "state": "STOPPED", "boot": "DISABLED", "pid_port": "-"},
-                {"name": "cups.service", "active": False, "state": "STOPPED", "boot": "DISABLED", "pid_port": "-"},
-                {"name": "ssh.service", "active": False, "state": "STOPPED", "boot": "DISABLED", "pid_port": "-"}
-            ]
-
-        self._send_json({"services": services})
-
     def _handle_api_stats(self):
         stats = self.db.get_stats()
         disk_data = self.disk_analyzer.analyze()
@@ -330,16 +267,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
     def _handle_api_options(self):
         opts = self.db.get_options()
         self._send_json({"options": opts})
-
-    def _handle_api_security_scan(self):
-        results = self.security_auditor.audit_all()
-        self._send_json(results)
-
-    def _handle_api_doctor(self):
-        from .doctor import SystemDoctor
-        doctor = SystemDoctor(cleaner=self.cleaner)
-        res = doctor.scan()
-        self._send_json(res)
 
     def _handle_api_cleaner_scan(self):
         results = self.cleaner.scan()
@@ -478,117 +405,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             "items": items
         })
 
-    def _handle_security_scan(self):
-        opts = self.db.get_options().get("modules", {}).get("security", {})
-        scan_cfg = opts.get("scan", {})
-
-        checks = []
-
-        if scan_cfg.get("ssh", True):
-            ssh_dir = Path.home() / ".ssh"
-            if ssh_dir.exists():
-                keys = [f.name for f in ssh_dir.glob("id_*") if not f.name.endswith(".pub")]
-                has_auth = (ssh_dir / "authorized_keys").exists()
-                checks.append({
-                    "id": "ssh",
-                    "name": "SSH Security",
-                    "status": "PASS" if keys else "INFO",
-                    "details": f"Found {len(keys)} key pair(s). Authorized keys file present: {has_auth}"
-                })
-            else:
-                checks.append({
-                    "id": "ssh",
-                    "name": "SSH Security",
-                    "status": "PASS",
-                    "details": "No ~/.ssh directory found."
-                })
-
-        if scan_cfg.get("secrets", True):
-            env_files = list(Path.home().glob(".env*"))[:5]
-            checks.append({
-                "id": "secrets",
-                "name": "Local Secrets & Tokens",
-                "status": "WARN" if env_files else "PASS",
-                "details": f"Detected {len(env_files)} .env file(s) in home directory." if env_files else "No plain .env secret files exposed in ~/"
-            })
-
-        if scan_cfg.get("path", True):
-            path_dirs = os.environ.get("PATH", "").split(":")
-            writable = [d for d in path_dirs if d and os.access(d, os.W_OK) and d not in (str(Path.home() / ".local" / "bin"), "/tmp")]
-            checks.append({
-                "id": "path",
-                "name": "PATH Environment Integrity",
-                "status": "INFO" if writable else "PASS",
-                "details": f"PATH contains {len(path_dirs)} directories ({len(writable)} user-writable)."
-            })
-
-        if scan_cfg.get("permissions", True):
-            bad_perms = []
-            for p in [Path.home() / ".ssh", Path.home() / ".gnupg"]:
-                if p.exists():
-                    st = p.stat()
-                    if st.st_mode & 0o077:
-                        bad_perms.append(p.name)
-            checks.append({
-                "id": "permissions",
-                "name": "File & Key Permissions",
-                "status": "WARN" if bad_perms else "PASS",
-                "details": f"Loose permissions on: {', '.join(bad_perms)}" if bad_perms else "Private keys and GPG permissions restricted (0700/0600)."
-            })
-
-        if scan_cfg.get("git", True):
-            res_user = subprocess.run(["git", "config", "--global", "user.name"], capture_output=True, text=True)
-            res_email = subprocess.run(["git", "config", "--global", "user.email"], capture_output=True, text=True)
-            git_user = res_user.stdout.strip()
-            git_email = res_email.stdout.strip()
-            checks.append({
-                "id": "git",
-                "name": "Git Signature Identity",
-                "status": "PASS" if git_user and git_email else "WARN",
-                "details": f"Configured as: {git_user} <{git_email}>" if git_user else "Git identity not set globally."
-            })
-
-        if scan_cfg.get("network", True):
-            checks.append({
-                "id": "network",
-                "name": "Network Exposure",
-                "status": "PASS",
-                "details": "Local loopback and local scans only policy active."
-            })
-
-        if scan_cfg.get("user_services", True):
-            checks.append({
-                "id": "user_services",
-                "name": "User Services & Daemons",
-                "status": "PASS",
-                "details": "All active user services running inside user session sandbox."
-            })
-
-        self._send_json({
-            "checks": checks,
-            "privacy": opts.get("privacy", {"local_scans_only": True, "never_upload_reports": True}),
-            "severity_threshold": opts.get("severity_threshold", "LOW")
-        })
-
-    def _handle_network_status(self):
-        import socket
-        hostname = socket.gethostname()
-        ports = []
-        test_ports = [22, 80, 443, 3000, 5173, 8000, 8080, 8421, 11434]
-        for port in test_ports:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(0.1)
-                res = sock.connect_ex(('127.0.0.1', port))
-                if res == 0:
-                    ports.append({"port": port, "state": "LISTEN", "address": "127.0.0.1"})
-
-        self._send_json({
-            "hostname": hostname,
-            "listening_ports": ports,
-            "local_ip": "127.0.0.1",
-            "online": len(ports) > 0
-        })
-
     def do_POST(self):
         if not self._is_origin_allowed():
             self.send_error(403, "Cross-origin request forbidden")
@@ -615,7 +431,7 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._send_error_json(f"Internal server error: {e}", status=500)
 
     def _dispatch_post_request(self, path: str, body: Dict[str, Any]):
-        if path in ('/api/heartbeat', '/api/shutdown', '/api/options', '/api/services/control', '/api/self-update'):
+        if path in ('/api/heartbeat', '/api/shutdown', '/api/options', '/api/self-update'):
             self._handle_post_system(path, body)
         elif path.startswith('/api/apps'):
             self._handle_post_apps(path, body)
@@ -627,8 +443,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._handle_post_cleaner(body)
         elif path == '/api/dotfiles/run':
             self._handle_post_dotfiles(body)
-        elif path == '/api/security/export':
-            self._handle_post_security_export(body)
         else:
             self._send_error_json("Endpoint not found", status=404)
 
@@ -653,36 +467,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 new_opts = body.get('options', body)
                 opts = self.db.save_options(new_opts)
             self._send_json({"success": True, "options": opts})
-
-        elif path == '/api/services/control':
-            service_name = body.get('service')
-            action = body.get('action')
-            if not service_name or not action:
-                self._send_error_json("service and action are required", status=400)
-                return
-            if not isinstance(service_name, str) or not re.fullmatch(r"[A-Za-z0-9:_.@-]+", service_name) or service_name.startswith("-"):
-                self._send_error_json("Invalid service name", status=400)
-                return
-
-            valid_actions = {"start": "start", "stop": "stop", "restart": "restart", "reset": "restart", "reload": "reload", "enable": "enable", "disable": "disable"}
-            sys_action = valid_actions.get(action.lower())
-            if not sys_action:
-                self._send_error_json(f"Invalid service action: {action}", status=400)
-                return
-
-            cmd = ["systemctl", sys_action, "--", service_name]
-            if os.geteuid() != 0:
-                cmd = ["sudo", "-n", "systemctl", sys_action, "--", service_name]
-
-            try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-                if res.returncode == 0:
-                    self._send_json({"success": True, "message": f"Service {service_name} {sys_action}ed successfully"})
-                else:
-                    err_msg = res.stderr.strip() or f"systemctl {sys_action} returned exit code {res.returncode}"
-                    self._send_json({"success": False, "error": err_msg, "needs_sudo": "sudo" in err_msg or res.returncode == 1}, status=200)
-            except Exception as e:
-                self._send_json({"success": False, "error": str(e)}, status=500)
 
         elif path == '/api/self-update':
             env = os.environ.copy()
@@ -812,22 +596,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             return
         res = self.dotfiles_manager.run_command(cmd_name, message=msg, package=pkg)
         self._send_json(res)
-
-    def _handle_post_security_export(self, body: Dict[str, Any]):
-        fmt = body.get('format', 'text')
-        filepath = body.get('filepath')
-        scan_res = self.security_auditor.audit_all()
-        out_path = self.security_auditor.export_report(scan_res, filepath=filepath, format_type=fmt)
-        if fmt == "json":
-            content = json.dumps(scan_res, indent=2)
-        else:
-            content = self.security_auditor.format_text_report(scan_res)
-        self._send_json({
-            "success": True,
-            "filepath": out_path,
-            "filename": Path(out_path).name,
-            "content": content
-        })
 
     def _handle_post_apps(self, path: str, body: Dict[str, Any]):
         if path == '/api/apps/inspect':

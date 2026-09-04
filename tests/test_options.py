@@ -25,7 +25,7 @@ class TestOptionsManager(unittest.TestCase):
         self.assertIn("appearance", opts)
         self.assertIn("behavior", opts)
         self.assertIn("modules", opts)
-        self.assertEqual(len(opts["tabs"]), 9)
+        self.assertEqual(len(opts["tabs"]), 5)
         self.assertEqual(opts["appearance"]["theme"], "classic-green")
 
     def test_database_save_and_merge_options(self):
@@ -113,11 +113,6 @@ class TestOptionsApi(unittest.TestCase):
         with urllib.request.urlopen(req_reset) as resp:
             res_reset = json.loads(resp.read().decode('utf-8'))
             self.assertEqual(res_reset["options"]["appearance"]["theme"], "classic-green")
-
-    def test_auxiliary_view_apis(self):
-        for endpoint in ["/api/security/scan", "/api/network/status", "/api/doctor"]:
-            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{endpoint}") as resp:
-                self.assertEqual(resp.status, 200)
 
 
 if __name__ == "__main__":

@@ -27,34 +27,7 @@ cd Clinux
 python3 app.py
 ```
 
-## CLI
-
-```bash
-# Cleaner
-python3 app.py clean               # scan and clean
-python3 app.py clean --dry-run     # preview space
-python3 app.py clean --all         # clean without prompts
-
-# Apps
-python3 app.py install <file>      # install archive
-python3 app.py list               # list apps
-python3 app.py remove <app>        # uninstall app
-
-# AI & Skills
-python3 app.py skills              # list skills
-python3 app.py skills -a <skill>   # activate skill
-python3 app.py skills -d <skill>   # deactivate skill
-python3 app.py ai-storage          # list models and workspaces
-
-# Dotfiles
-python3 app.py dotfiles            # show stow status
-python3 app.py dotfiles check      # preview stow links
-python3 app.py dotfiles apply      # apply all links
-python3 app.py dotfiles stow <pkg> # stow one package
-python3 app.py dotfiles unstow <pkg> # unstow one package
-```
-
-## Paths
+##  Paths
 
 | Item            | Path                                          |
 | --------------- | --------------------------------------------- |

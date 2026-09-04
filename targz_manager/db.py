@@ -17,11 +17,7 @@ DEFAULT_OPTIONS = {
         {"id": "cleaner", "name": "Cleaner", "visible": True, "category": "SYSTEM"},
         {"id": "apps", "name": "Portable Apps", "visible": True, "category": "DEVELOPMENT"},
         {"id": "ai", "name": "AI & Skills", "visible": True, "category": "AI & SKILLS"},
-        {"id": "dotfiles", "name": "Dotfiles", "visible": True, "category": "PERSONAL"},
-        {"id": "security", "name": "Security", "visible": True, "category": "SYSTEM"},
-        {"id": "services", "name": "Services", "visible": False, "category": "SYSTEM"},
-        {"id": "network", "name": "Network", "visible": False, "category": "SYSTEM"},
-        {"id": "doctor", "name": "System Doctor", "visible": False, "category": "SYSTEM"}
+        {"id": "dotfiles", "name": "Dotfiles", "visible": True, "category": "PERSONAL"}
     ],
     "appearance": {
         "theme": "classic-green",
@@ -54,22 +50,6 @@ DEFAULT_OPTIONS = {
             },
             "require_confirmation": True,
             "show_reclaimable_space": True
-        },
-        "security": {
-            "scan": {
-                "ssh": True,
-                "secrets": True,
-                "path": True,
-                "permissions": True,
-                "git": True,
-                "network": True,
-                "user_services": True
-            },
-            "privacy": {
-                "local_scans_only": True,
-                "never_upload_reports": True
-            },
-            "severity_threshold": "LOW"
         }
     }
 }

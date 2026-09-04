@@ -245,16 +245,6 @@ class ClinuxApp {
         }
       }
 
-      const servicesRes = await fetch('/api/services');
-      if (servicesRes.ok) {
-        const servData = await servicesRes.json();
-        const servEl = document.getElementById('dashServicesStr');
-        if (servEl && servData.services) {
-          const activeCount = servData.services.filter(s => s.active || s.sub === 'running' || s.active_state === 'active').length;
-          servEl.innerText = `${activeCount} active`;
-        }
-      }
-
       const storageRes = await fetch('/api/ai/storage');
       if (storageRes.ok) {
         const sData = await storageRes.json();
@@ -366,11 +356,7 @@ class ClinuxApp {
       apps: document.getElementById('appsView'),
       ai: document.getElementById('aiView'),
       dotfiles: document.getElementById('dotfilesView'),
-      services: document.getElementById('servicesView'),
       options: document.getElementById('optionsView'),
-      security: document.getElementById('securityView'),
-      network: document.getElementById('networkView'),
-      doctor: document.getElementById('doctorView'),
       empty: document.getElementById('emptyState')
     };
 
@@ -389,18 +375,6 @@ class ClinuxApp {
     } else if (tab === 'options') {
       if (views.options) views.options.style.display = 'flex';
       this.populateOptionsForm();
-    } else if (tab === 'security') {
-      if (views.security) views.security.style.display = 'flex';
-      this.fetchSecurityScan();
-    } else if (tab === 'network') {
-      if (views.network) views.network.style.display = 'flex';
-      this.fetchNetworkStatus();
-    } else if (tab === 'doctor') {
-      if (views.doctor) views.doctor.style.display = 'flex';
-      this.fetchDoctorDiagnosis();
-    } else if (tab === 'services') {
-      if (views.services) views.services.style.display = 'flex';
-      this.fetchServicesList();
     } else if (tab === 'storage') {
       if (views.ai) views.ai.style.display = 'flex';
       this.setAISubTab('storage');
@@ -410,10 +384,6 @@ class ClinuxApp {
     } else if (tab === 'dotfiles') {
       if (views.dotfiles) views.dotfiles.style.display = 'flex';
       this.fetchDotfilesStatus();
-    } else if (tab === 'security') {
-      const secView = document.getElementById('securityView');
-      if (secView) secView.style.display = 'flex';
-      this.runSecurityScan();
     } else {
       // Portable Apps (all, ignored, discovered)
       if (views.apps) views.apps.style.display = 'flex';
@@ -1484,127 +1454,6 @@ class ClinuxApp {
   }
 
   // =========================================================================
-  // Security Audit Manager
-  // =========================================================================
-  async runSecurityScan() {
-    this.toast('Running read-only security audit...', 'info');
-    try {
-      const res = await fetch('/api/security/scan');
-      if (res.ok) {
-        const data = await res.json();
-        this.securityData = data;
-        this.renderSecurityReport();
-        this.toast('Security audit complete', 'success');
-      }
-    } catch (e) {
-      this.toast('Security audit failed: ' + e.message, 'error');
-    }
-  }
-
-  renderSecurityReport() {
-    const data = this.securityData;
-    if (!data) return;
-
-    const userHost = document.getElementById('secUserHost');
-    const high = document.getElementById('secHighCount');
-    const med = document.getElementById('secMediumCount');
-    const low = document.getElementById('secLowCount');
-    const info = document.getElementById('secInfoCount');
-    const passed = document.getElementById('secPassedCount');
-    const badge = document.getElementById('securityHighBadge');
-    const list = document.getElementById('securityFindingsList');
-
-    if (userHost) userHost.textContent = `${data.user} @ ${data.home}`;
-
-    const s = data.summary || {};
-    if (high) high.textContent = `${s.high || 0} HIGH`;
-    if (med) med.textContent = `${s.medium || 0} MEDIUM`;
-    if (low) low.textContent = `${s.low || 0} LOW`;
-    if (info) info.textContent = `${s.info || 0} INFO`;
-    if (passed) passed.textContent = `${s.passed || 0} PASSED`;
-
-    if (badge) {
-      if (s.high > 0) {
-        badge.style.display = 'inline-block';
-        badge.textContent = `${s.high} HIGH`;
-      } else {
-        badge.style.display = 'none';
-      }
-    }
-
-    if (!list) return;
-
-    if (!data.findings || data.findings.length === 0) {
-      list.innerHTML = `<div class="terminal-box" style="padding:16px;">No security findings.</div>`;
-      return;
-    }
-
-    const severities = ['HIGH', 'MEDIUM', 'LOW', 'INFO', 'PASSED'];
-    let html = '';
-
-    severities.forEach(sev => {
-      const items = data.findings.filter(f => f.severity === sev);
-      if (items.length === 0) return;
-
-      const titleColor = sev === 'HIGH' ? '#e05252' : (sev === 'MEDIUM' ? 'var(--c-warning-yellow)' : (sev === 'PASSED' ? 'var(--c-terminal-green-bright)' : 'var(--c-warm-beige)'));
-      const icon = sev === 'HIGH' || sev === 'MEDIUM' ? '[!]' : (sev === 'PASSED' ? '[✓]' : '[~]');
-
-      html += `
-        <div class="retro-panel" style="margin-top:0;">
-          <div class="retro-panel-title" style="color:${titleColor};">${sev} FINDINGS (${items.length})</div>
-          <div style="display:flex; flex-direction:column; gap:8px;">
-            ${items.map(f => `
-              <div class="terminal-box" style="padding:8px 10px;">
-                <div style="font-weight:bold; color:${titleColor}; margin-bottom:4px;">
-                  ${icon} ${this.escapeHtml(f.title.toUpperCase())}
-                </div>
-                <div style="color:var(--c-warm-beige); margin-bottom:4px; font-size:11px;">
-                  ${this.escapeHtml(f.evidence)}
-                </div>
-                ${f.risk && f.risk !== 'None.' ? `<div style="color:var(--text-muted); font-size:11px;"><strong>Risk:</strong> ${this.escapeHtml(f.risk)}</div>` : ''}
-                ${f.why_it_matters ? `<div style="color:var(--text-muted); font-size:11px;"><strong>Why:</strong> ${this.escapeHtml(f.why_it_matters)}</div>` : ''}
-                ${f.remediation ? `
-                  <div style="margin-top:6px; padding:4px 6px; background:var(--c-near-black); border:1px dashed var(--c-shadow); font-family:monospace; font-size:11px; color:var(--c-warning-yellow);">
-                    <strong>Suggested:</strong> ${this.escapeHtml(f.remediation)}
-                  </div>
-                ` : ''}
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      `;
-    });
-
-    list.innerHTML = html;
-  }
-
-  async exportSecurityReport(format = 'text') {
-    this.toast(`Generating ${format.toUpperCase()} report...`, 'info');
-    try {
-      const res = await fetch('/api/security/export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ format })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.content) {
-          const blob = new Blob([data.content], { type: format === 'json' ? 'application/json' : 'text/plain' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = data.filename || `clinux-security.${format === 'json' ? 'json' : 'txt'}`;
-          a.click();
-          URL.revokeObjectURL(url);
-          this.toast(`Report saved: ${data.filename}`, 'success');
-        }
-      }
-    } catch (e) {
-      this.toast('Export report failed', 'error');
-    }
-  }
-
-  // =========================================================================
   // Dotfiles Manager
   // =========================================================================
   async fetchDotfilesStatus(showToast = false) {
@@ -1909,33 +1758,6 @@ class ClinuxApp {
 
     const showSpace = document.getElementById('optCleanerShowSpace');
     if (showSpace) showSpace.checked = cln.show_reclaimable_space !== false;
-
-    // Security
-    const sec = (this.options.modules && this.options.modules.security) || {};
-    const scan = sec.scan || {};
-    const secKeys = {
-      optSecSsh: 'ssh',
-      optSecSecrets: 'secrets',
-      optSecPath: 'path',
-      optSecPerms: 'permissions',
-      optSecGit: 'git',
-      optSecNet: 'network',
-      optSecServices: 'user_services'
-    };
-    Object.entries(secKeys).forEach(([elId, key]) => {
-      const el = document.getElementById(elId);
-      if (el) el.checked = scan[key] !== false;
-    });
-
-    const priv = sec.privacy || {};
-    const localOnly = document.getElementById('optSecLocalOnly');
-    if (localOnly) localOnly.checked = priv.local_scans_only !== false;
-
-    const neverUp = document.getElementById('optSecNeverUpload');
-    if (neverUp) neverUp.checked = priv.never_upload_reports !== false;
-
-    const thresholdSel = document.getElementById('optSecThreshold');
-    if (thresholdSel) thresholdSel.value = sec.severity_threshold || 'LOW';
   }
 
   renderOptionsTabsList() {
@@ -2033,24 +1855,9 @@ class ClinuxApp {
       require_confirmation: document.getElementById('optCleanerReqConfirm').checked,
       show_reclaimable_space: document.getElementById('optCleanerShowSpace').checked
     };
-
-    // Security
-    this.options.modules.security = {
-      scan: {
-        ssh: document.getElementById('optSecSsh').checked,
-        secrets: document.getElementById('optSecSecrets').checked,
-        path: document.getElementById('optSecPath').checked,
-        permissions: document.getElementById('optSecPerms').checked,
-        git: document.getElementById('optSecGit').checked,
-        network: document.getElementById('optSecNet').checked,
-        user_services: document.getElementById('optSecServices').checked
-      },
-      privacy: {
-        local_scans_only: document.getElementById('optSecLocalOnly').checked,
-        never_upload_reports: document.getElementById('optSecNeverUpload').checked
-      },
-      severity_threshold: document.getElementById('optSecThreshold').value
-    };
+    if (this.options.modules) {
+      delete this.options.modules.security;
+    }
 
     try {
       const res = await fetch('/api/options', {
@@ -2088,163 +1895,6 @@ class ClinuxApp {
     }
   }
 
-  async fetchSecurityScan() {
-    const list = document.getElementById('securityChecksList');
-    if (!list) return;
-    list.innerHTML = '<div class="terminal-box">Running security audit...</div>';
-    try {
-      const res = await fetch('/api/security/scan');
-      const data = await res.json();
-      let html = '';
-      (data.checks || []).forEach(c => {
-        const badgeColor = c.status === 'PASS' ? 'var(--c-terminal-green-bright)' : (c.status === 'WARN' ? 'var(--c-warning-yellow)' : 'var(--text-muted)');
-        html += `
-          <div class="terminal-box" style="padding:8px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong style="color:var(--c-warm-beige);">${c.name}</strong>
-              <span style="color:${badgeColor}; font-weight:bold;">[ ${c.status} ]</span>
-            </div>
-            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${c.details}</div>
-          </div>
-        `;
-      });
-      list.innerHTML = html || '<div class="terminal-box">No security checks returned.</div>';
-    } catch (e) {
-      list.innerHTML = '<div class="terminal-box terminal-line-err">Error loading security audit results.</div>';
-    }
-  }
-
-
-  async fetchNetworkStatus() {
-    const box = document.getElementById('networkStatusContent');
-    if (!box) return;
-    box.innerHTML = 'Scanning network ports...';
-    try {
-      const res = await fetch('/api/network/status');
-      const data = await res.json();
-      let html = `HOSTNAME: ${data.hostname}\nLOCAL IP: ${data.local_ip}\nONLINE: ${data.online ? 'YES' : 'NO'}\n\nLISTENING PORTS:\n`;
-      (data.listening_ports || []).forEach(p => {
-        html += `  • Port ${p.port} (${p.address}:${p.port}) - ${p.state}\n`;
-      });
-      box.textContent = html;
-    } catch (e) {
-      box.textContent = 'Error scanning network status.';
-    }
-  }
-
-  async fetchDoctorDiagnosis() {
-    const box = document.getElementById('doctorContent');
-    if (!box) return;
-    box.innerHTML = 'Running System Doctor diagnostics...';
-    try {
-      const res = await fetch('/api/doctor');
-      const data = await res.json();
-      let html = `SYSTEM DOCTOR DIAGNOSIS REPORT:\n`;
-      html += `Failed Services: ${data.failed_services ? data.failed_services.length : 0}\n`;
-      html += `Old Kernels: ${data.old_kernels ? data.old_kernels.length : 0}\n`;
-      html += `Broken Shortcuts: ${data.broken_desktop_entries ? data.broken_desktop_entries.length : 0}\n`;
-      html += `Reclaimable Cache: ${data.reclaimable_cache_formatted || '0 B'}\n\n`;
-
-      if (data.all_problems && data.all_problems.length > 0) {
-        html += `PROBLEMS DETECTED:\n`;
-        data.all_problems.forEach((p, idx) => {
-          html += ` [${idx + 1}] ${p.description}\n`;
-          if (p.fix_command) html += `     Fix: ${p.fix_command}\n`;
-        });
-      } else {
-        html += `✓ All systems healthy! No critical issues found.`;
-      }
-      box.textContent = html;
-    } catch (e) {
-      box.textContent = 'Error running System Doctor diagnostics.';
-    }
-  }
-
-  async fetchServicesList() {
-    const container = document.getElementById('servicesTableContainer');
-    if (!container) return;
-    container.innerHTML = '<div class="terminal-box">Querying systemd services...</div>';
-    try {
-      const res = await fetch('/api/services');
-      const data = await res.json();
-      this.servicesData = data.services || [];
-      this.renderServicesTable();
-    } catch (e) {
-      container.innerHTML = '<div class="terminal-box terminal-line-err">Error fetching service list.</div>';
-    }
-  }
-
-  renderServicesTable() {
-    const container = document.getElementById('servicesTableContainer');
-    if (!container) return;
-    if (!this.servicesData || this.servicesData.length === 0) {
-      container.innerHTML = '<div class="terminal-box">No services found.</div>';
-      return;
-    }
-
-    let html = `
-      <table class="retro-table">
-        <thead>
-          <tr>
-            <th>SERVICE</th>
-            <th>STATE</th>
-            <th>BOOT</th>
-            <th>PORT / PID</th>
-            <th>ACTIONS</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${this.servicesData.map(s => {
-            const isRunning = s.active || s.state === 'ACTIVE' || s.state === 'RUNNING';
-            const stateColor = isRunning ? 'var(--c-terminal-green-bright)' : 'var(--text-muted)';
-            return `
-              <tr class="${isRunning ? 'selected' : ''}">
-                <td><strong>${this.escapeHtml(s.name)}</strong></td>
-                <td><span style="color:${stateColor}; font-weight:bold;">${this.escapeHtml(s.state)}</span></td>
-                <td>${this.escapeHtml(s.boot)}</td>
-                <td>${this.escapeHtml(s.pid_port || '-')}</td>
-                <td>
-                  <div style="display:flex; gap:4px;">
-                    ${isRunning ?
-                      `<button class="retro-btn retro-btn-danger" onclick="app.controlService('${this.escapeHtml(s.name)}', 'stop')">STOP</button>
-                       <button class="retro-btn" onclick="app.controlService('${this.escapeHtml(s.name)}', 'restart')">RESTART</button>` :
-                      `<button class="retro-btn retro-btn-green" onclick="app.controlService('${this.escapeHtml(s.name)}', 'start')">START</button>`
-                    }
-                    ${s.boot === 'ENABLED' ?
-                      `<button class="retro-btn" onclick="app.controlService('${this.escapeHtml(s.name)}', 'disable')">DISABLE</button>` :
-                      `<button class="retro-btn" onclick="app.controlService('${this.escapeHtml(s.name)}', 'enable')">ENABLE</button>`
-                    }
-                  </div>
-                </td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    `;
-    container.innerHTML = html;
-  }
-
-  async controlService(serviceName, action) {
-    this.toast(`${action.toUpperCase()}ing service ${serviceName}...`, 'info');
-    try {
-      const res = await fetch('/api/services/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service: serviceName, action: action })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        this.toast(`Service ${serviceName} ${action}ed successfully!`, 'success');
-        await this.fetchServicesList();
-      } else {
-        this.toast(data.error || `Failed to ${action} service`, 'error');
-      }
-    } catch (e) {
-      this.toast(`Error executing service control: ${e.message}`, 'error');
-    }
-  }
-
   openAboutModal() {
     this.openModal('aboutModal');
   }
@@ -2262,14 +1912,13 @@ class ClinuxApp {
   }
 
   openCommandPalette() {
-    const cmd = prompt('CLINUX COMMAND PALETTE:\n1: Dashboard\n2: Cleaner\n3: Portable Apps\n4: AI & Skills\n5: Dotfiles\n6: Services\n7: Options\nq: Exit', '1');
+    const cmd = prompt('CLINUX COMMAND PALETTE:\n1: Dashboard\n2: Cleaner\n3: Portable Apps\n4: AI & Skills\n5: Dotfiles\n6: Options\nq: Exit', '1');
     if (cmd === '1') this.setTab('dashboard');
     else if (cmd === '2') this.setTab('cleaner');
     else if (cmd === '3') this.setTab('all');
     else if (cmd === '4') this.setTab('ai');
     else if (cmd === '5') this.setTab('dotfiles');
-    else if (cmd === '6') this.setTab('services');
-    else if (cmd === '7') this.setTab('options');
+    else if (cmd === '6') this.setTab('options');
   }
 
   closeWindow() {

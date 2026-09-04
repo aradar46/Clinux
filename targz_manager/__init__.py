@@ -11,5 +11,4 @@ from .server import create_server
 from .cleaner import SystemCleaner
 from .ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
 from .dotfiles_manager import DotfilesManager
-from .doctor import SystemDoctor
 from .disk_analyzer import DiskAnalyzer

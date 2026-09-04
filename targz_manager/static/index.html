@@ -31,24 +31,6 @@
       </div>
     </div>
 
-    <!-- Classic Top Menu Bar -->
-    <div class="window-menubar">
-      <div class="menu-item" onclick="app.openCommandPalette()"><u>F</u>ile</div>
-      <div class="menu-item" onclick="app.setTab('cleaner')"><u>T</u>ools</div>
-      <div class="menu-item" onclick="app.setTab('dashboard')"><u>S</u>ystem</div>
-      <div class="menu-item" onclick="app.setTab('ai')">S<u>k</u>ills</div>
-      <div class="menu-item" onclick="app.setTab('dotfiles')"><u>D</u>otfiles</div>
-      <div class="menu-item" onclick="app.setTab('options')"><u>O</u>ptions</div>
-      <div class="menu-item" onclick="app.openAboutModal()"><u>A</u>bout</div>
-      <div class="menu-item" onclick="app.openHelpModal()"><u>H</u>elp</div>
-      <div class="menu-spacer"></div>
-      <!-- Search Input in Header -->
-      <div style="display:flex; align-items:center; gap:4px;">
-        <label for="searchInput" style="color:var(--text-dark); font-weight:bold; font-size:11px;">FIND:</label>
-        <input type="text" id="searchInput" class="retro-input" style="width:180px; height:20px; font-size:11px;" placeholder="Filter... (/)" autocomplete="off" aria-label="Filter modules">
-      </div>
-    </div>
-
     <!-- Workspace Area (Sidebar + Main Panel Viewport) -->
     <div class="window-workspace">
 
@@ -102,34 +84,6 @@
           </div>
         </div>
 
-        <!-- VIEW 0: SECURITY AUDIT REPORT -->
-        <div id="securityView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
-          <div class="retro-panel-title">CLINUX SECURITY AUDIT REPORT</div>
-
-          <div class="terminal-box" style="padding:12px;">
-            <div style="font-size:14px; font-weight:bold; color:var(--c-terminal-green-bright); margin-bottom:8px;">
-              USER-SPACE READ-ONLY AUDIT — <span id="secUserHost">user@clinux</span>
-            </div>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px; border-top:1px dashed var(--c-terminal-green); padding-top:8px;">
-              <div>[!] <strong style="color:#e05252;" id="secHighCount">0 HIGH</strong></div>
-              <div>[!] <strong style="color:var(--c-warning-yellow);" id="secMediumCount">0 MEDIUM</strong></div>
-              <div>[~] <strong style="color:var(--c-warm-beige);" id="secLowCount">0 LOW</strong></div>
-              <div>[i] <strong style="color:var(--text-muted);" id="secInfoCount">0 INFO</strong></div>
-              <div>[✓] <strong style="color:var(--c-terminal-green-bright);" id="secPassedCount">0 PASSED</strong></div>
-            </div>
-          </div>
-
-          <div class="action-toolbar">
-            <button class="retro-btn retro-btn-green" onclick="app.runSecurityScan()">[ S ] SCAN NOW</button>
-            <button class="retro-btn" onclick="app.exportSecurityReport('text')">[ E ] SAVE TEXT REPORT</button>
-            <button class="retro-btn" onclick="app.exportSecurityReport('json')">[ J ] SAVE JSON REPORT</button>
-          </div>
-
-          <div id="securityFindingsList" style="display:flex; flex-direction:column; gap:10px;">
-            <!-- Populated dynamically by app.js -->
-          </div>
-        </div>
-
         <!-- VIEW 1: SYSTEM DASHBOARD -->
         <div id="dashboardView" class="retro-panel" style="display:flex; flex-direction:column; gap:12px; margin-top:0;">
           <div class="retro-panel-title">SYSTEM STATUS & DASHBOARD</div>
@@ -141,7 +95,6 @@
             </div>
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; border-top:1px dashed var(--c-terminal-green); padding-top:8px;">
               <div>Disk Usage: <strong style="color:var(--c-warm-beige);" id="dashDiskUsageStr">-- GB / -- GB (--%)</strong></div>
-              <div>Running Services: <strong style="color:var(--c-warm-beige);" id="dashServicesStr">-- active</strong></div>
               <div>AI Models Footprint: <strong style="color:var(--c-warm-beige);" id="dashAIModelSize">-- GB</strong></div>
               <div>Reclaimable Junk: <strong style="color:var(--c-warning-yellow);" id="dashCleanerSize">-- GB</strong></div>
             </div>
@@ -334,18 +287,6 @@
           </div>
         </div>
 
-        <!-- VIEW 6: SERVICES PANEL -->
-        <div id="servicesView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
-          <div class="retro-panel-title">SYSTEM SERVICES & RUNTIMES</div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>Manage system daemons, background services, and systemd units.</div>
-            <button class="retro-btn" onclick="app.fetchServicesList()">[ R ] REFRESH SERVICES</button>
-          </div>
-          <div id="servicesTableContainer">
-            <!-- Dynamically populated by app.js -->
-          </div>
-        </div>
-
         <!-- VIEW 7: OPTIONS CONTROL PANEL -->
         <div id="optionsView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
           <div class="retro-panel-title">CLINUX OPTIONS CONTROL PANEL</div>
@@ -451,47 +392,6 @@
                 <label><input type="checkbox" id="optCleanerShowSpace" checked> Show reclaimable space</label>
               </div>
             </div>
-
-            <!-- SECURITY -->
-            <div>
-              <div style="font-weight:bold; color:var(--c-terminal-green-bright); margin-bottom:6px;">SECURITY</div>
-
-              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
-                <div>
-                  <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">Scan</div>
-                  <div style="display:flex; flex-direction:column; gap:3px;">
-                    <label><input type="checkbox" id="optSecSsh" checked> SSH</label>
-                    <label><input type="checkbox" id="optSecSecrets" checked> Secrets</label>
-                    <label><input type="checkbox" id="optSecPath" checked> PATH</label>
-                    <label><input type="checkbox" id="optSecPerms" checked> Permissions</label>
-                    <label><input type="checkbox" id="optSecGit" checked> Git</label>
-                    <label><input type="checkbox" id="optSecNet" checked> Network</label>
-                    <label><input type="checkbox" id="optSecServices" checked> User services</label>
-                  </div>
-                </div>
-
-                <div>
-                  <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">Privacy</div>
-                  <div style="display:flex; flex-direction:column; gap:3px;">
-                    <label><input type="checkbox" id="optSecLocalOnly" checked> Local scans only</label>
-                    <label><input type="checkbox" id="optSecNeverUpload" checked> Never upload reports</label>
-                  </div>
-                </div>
-
-                <div>
-                  <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">Report</div>
-                  <div>
-                    <label style="font-size:11px;">Severity threshold</label>
-                    <select id="optSecThreshold" class="retro-input" style="width:100%; margin-top:2px;">
-                      <option value="LOW">LOW</option>
-                      <option value="MEDIUM">MEDIUM</option>
-                      <option value="HIGH">HIGH</option>
-                      <option value="CRITICAL">CRITICAL</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
           <!-- ACTION BUTTONS -->
@@ -499,37 +399,6 @@
             <button class="retro-btn retro-btn-green" onclick="app.applyOptions()" style="min-width:110px;">[ APPLY ]</button>
             <button class="retro-btn" onclick="app.resetOptions()" style="min-width:110px;">[ RESET ]</button>
           </div>
-        </div>
-
-        <!-- VIEW 8: SECURITY PANEL -->
-        <div id="securityView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
-          <div class="retro-panel-title">SYSTEM SECURITY & PRIVACY AUDIT</div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>Local security scan results based on active security profile.</div>
-            <button class="retro-btn retro-btn-green" onclick="app.fetchSecurityScan()">Run Audit</button>
-          </div>
-          <div id="securityChecksList" style="display:flex; flex-direction:column; gap:8px;"></div>
-        </div>
-
-
-        <!-- VIEW 10: NETWORK PANEL -->
-        <div id="networkView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
-          <div class="retro-panel-title">NETWORK INTERFACES & LISTENING PORTS</div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>Local loopback interfaces and active listening server sockets.</div>
-            <button class="retro-btn" onclick="app.fetchNetworkStatus()">Refresh</button>
-          </div>
-          <div id="networkStatusContent" class="terminal-box"></div>
-        </div>
-
-        <!-- VIEW 11: SYSTEM DOCTOR -->
-        <div id="doctorView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
-          <div class="retro-panel-title">SYSTEM DOCTOR DIAGNOSTICS</div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>Diagnose failed systemd services, old kernels, broken .desktop shortcuts, and disk issues.</div>
-            <button class="retro-btn retro-btn-green" onclick="app.fetchDoctorDiagnosis()">Run Diagnostics</button>
-          </div>
-          <div id="doctorContent" class="terminal-box"></div>
         </div>
 
         <!-- EMPTY STATE -->
@@ -554,7 +423,6 @@
       </div>
       <div class="statusbar-right">
         <span>[?] Help</span>
-        <span>[/] Search</span>
         <span>[Ctrl+K] Palette</span>
       </div>
     </div>
