@@ -180,35 +180,45 @@ class Installer:
         executables = []
         icons = []
 
+        name_lower = name.lower()
+        ignored_exts = {'.txt', '.md', '.html', '.css', '.js', '.json', '.xml', '.png', '.jpg', '.svg', '.so', '.a', '.h', '.c', '.cpp', '.pyc', '.mo', '.po', '.desktop', '.man', '.1', '.gz', '.zip'}
+        executable_exts = {'.sh', '.bin', '.appimage'}
+        icon_exts = {'.png', '.svg', '.ico', '.xpm'}
+        icon_keywords = ('icon', 'logo', 'pixmap', 'hicolor', 'scalable')
+
+        wrapper_prefix = f"{single_root}/" if (has_wrapper and single_root) else None
+        wrapper_prefix_len = len(wrapper_prefix) if wrapper_prefix else 0
+
         for m in members:
             if m["is_dir"]:
                 continue
             m_name = m["name"]
-            rel_name = m_name
-            if has_wrapper and single_root and m_name.startswith(single_root + '/'):
-                rel_name = m_name[len(single_root) + 1:]
+            m_size = m["size"]
+            m_mode = m.get("mode", 0)
+
+            if wrapper_prefix and m_name.startswith(wrapper_prefix):
+                rel_name = m_name[wrapper_prefix_len:]
+            else:
+                rel_name = m_name
 
             filename = Path(rel_name).name
             lower_name = filename.lower()
             lower_rel = rel_name.lower()
 
-            mode = m.get("mode", 0)
-            is_exec_mode = bool(mode & 0o111) if mode else False
-            score = 0
-
-            ignored_exts = {'.txt', '.md', '.html', '.css', '.js', '.json', '.xml', '.png', '.jpg', '.svg', '.so', '.a', '.h', '.c', '.cpp', '.pyc', '.mo', '.po', '.desktop', '.man', '.1', '.gz', '.zip'}
+            is_exec_mode = bool(m_mode & 0o111) if m_mode else False
             ext = Path(filename).suffix.lower()
 
             if ext not in ignored_exts:
+                score = 0
                 if is_exec_mode:
                     score += 50
-                if lower_name == name.lower():
+                if lower_name == name_lower:
                     score += 60
-                elif lower_name.startswith(name.lower()):
+                elif lower_name.startswith(name_lower):
                     score += 40
                 if rel_name.startswith("bin/"):
                     score += 30
-                if ext in {'.sh', '.bin', '.appimage'}:
+                if ext in executable_exts:
                     score += 20
                 if '/' not in rel_name:
                     score += 15
@@ -219,14 +229,14 @@ class Installer:
                         "orig_path": m_name,
                         "score": score,
                         "is_exec_bit": is_exec_mode,
-                        "size": m["size"]
+                        "size": m_size
                     })
 
-            if ext in {'.png', '.svg', '.ico', '.xpm'}:
+            if ext in icon_exts:
                 icon_score = 10
-                if any(k in lower_rel for k in ['icon', 'logo', 'pixmap', 'hicolor', 'scalable']):
+                if any(k in lower_rel for k in icon_keywords):
                     icon_score += 40
-                if name.lower() in lower_name:
+                if name_lower in lower_name:
                     icon_score += 30
                 if ext == '.svg':
                     icon_score += 10
@@ -234,7 +244,7 @@ class Installer:
                     "path": rel_name,
                     "orig_path": m_name,
                     "score": icon_score,
-                    "size": m["size"]
+                    "size": m_size
                 })
 
         executables.sort(key=lambda x: x["score"], reverse=True)
