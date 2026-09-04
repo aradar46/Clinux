@@ -155,6 +155,35 @@ class TestTarGzManager(unittest.TestCase):
         self.assertFalse(Path(app["symlink_path"]).exists())
         self.assertIsNone(self.db.get_app(app["id"]))
 
+    def test_uninstall_app_errors(self):
+        # Test uninstalling non-existent app_id
+        with self.assertRaises(ArchiveError) as ctx:
+            self.installer.uninstall_app(99999)
+        self.assertIn("not found", str(ctx.exception))
+
+        # Test failure during file deletion during uninstall
+        dest_path = self.temp_dir / "opt" / "sample-app-err"
+        app = self.installer.install_app(
+            archive_path=str(self.tar_gz_path),
+            name="sample-app-err",
+            display_name="Sample App Error Test",
+            version="1.0.0",
+            category="Utility",
+            install_path=str(dest_path),
+            create_desktop=False,
+            create_bin_symlink=False
+        )
+
+        with mock.patch("shutil.rmtree", side_effect=PermissionError("Permission denied")):
+            with self.assertRaises(ArchiveError) as ctx:
+                self.installer.uninstall_app(app["id"], delete_files=True)
+            self.assertIn("Failed to delete install directory", str(ctx.exception))
+
+        # Verify DB record still exists after deletion failure
+        retained_app = self.db.get_app(app["id"])
+        self.assertIsNotNone(retained_app)
+        self.assertEqual(retained_app["name"], "sample-app-err")
+
     def test_register_existing_app(self):
         app = self.installer.register_existing_app(
             name="existing-app",
