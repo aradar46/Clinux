@@ -369,7 +369,6 @@ class ClinuxApp {
       services: document.getElementById('servicesView'),
       options: document.getElementById('optionsView'),
       security: document.getElementById('securityView'),
-      projects: document.getElementById('projectsView'),
       network: document.getElementById('networkView'),
       doctor: document.getElementById('doctorView'),
       empty: document.getElementById('emptyState')
@@ -393,9 +392,6 @@ class ClinuxApp {
     } else if (tab === 'security') {
       if (views.security) views.security.style.display = 'flex';
       this.fetchSecurityScan();
-    } else if (tab === 'projects') {
-      if (views.projects) views.projects.style.display = 'flex';
-      this.fetchProjectsList();
     } else if (tab === 'network') {
       if (views.network) views.network.style.display = 'flex';
       this.fetchNetworkStatus();
@@ -1792,6 +1788,9 @@ class ClinuxApp {
       const data = await res.json();
       if (data.options) {
         this.options = data.options;
+        if (this.options.tabs) {
+          this.options.tabs = this.options.tabs.filter(t => t.id !== 'projects');
+        }
         this.applyOptionsToUI();
       }
     } catch (e) {
@@ -1829,12 +1828,11 @@ class ClinuxApp {
     const container = document.getElementById('sidebarModulesTree');
     if (!container || !this.options || !this.options.tabs) return;
 
-    const visibleTabs = this.options.tabs.filter(t => t.visible);
+    const visibleTabs = this.options.tabs.filter(t => t.visible && t.id !== 'projects');
     let html = '';
 
     visibleTabs.forEach(t => {
       const activeClass = this.currentTab === t.id ? 'active' : '';
-      const prefix = this.currentTab === t.id ? '>' : ' ';
 
       let badgeHtml = '';
       if (t.id === 'cleaner') {
@@ -1849,7 +1847,7 @@ class ClinuxApp {
 
       html += `
         <div class="nav-item ${activeClass}" id="nav_${t.id}" onclick="app.setTab('${t.id}')">
-          <span>${prefix} ${t.name}</span>
+          <span>${t.name}</span>
           ${badgeHtml}
         </div>
       `;
@@ -2116,29 +2114,6 @@ class ClinuxApp {
     }
   }
 
-  async fetchProjectsList() {
-    const grid = document.getElementById('projectsListGrid');
-    if (!grid) return;
-    grid.innerHTML = '<div class="terminal-box">Scanning for developer projects...</div>';
-    try {
-      const res = await fetch('/api/projects/list');
-      const data = await res.json();
-      let html = '';
-      (data.projects || []).forEach(p => {
-        html += `
-          <div class="retro-panel" style="margin-top:0;">
-            <div class="retro-panel-title">${p.type}</div>
-            <div style="font-weight:bold; color:var(--c-warm-beige); margin-bottom:4px;">${p.name}</div>
-            <div style="font-size:11px; color:var(--text-muted); text-overflow:ellipsis; overflow:hidden;">${p.path}</div>
-            <div style="margin-top:6px; font-size:11px;">Branch: <strong style="color:var(--c-terminal-green);">${p.branch}</strong></div>
-          </div>
-        `;
-      });
-      grid.innerHTML = html || '<div class="terminal-box">No developer projects found.</div>';
-    } catch (e) {
-      grid.innerHTML = '<div class="terminal-box terminal-line-err">Error loading project repositories.</div>';
-    }
-  }
 
   async fetchNetworkStatus() {
     const box = document.getElementById('networkStatusContent');

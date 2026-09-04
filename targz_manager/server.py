@@ -191,8 +191,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._handle_api_options()
         elif path == '/api/security/scan':
             self._handle_api_security_scan()
-        elif path == '/api/projects/list':
-            self._handle_projects_list()
         elif path == '/api/network/status':
             self._handle_network_status()
         elif path == '/api/doctor':
@@ -572,70 +570,6 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             "severity_threshold": opts.get("severity_threshold", "LOW")
         })
 
-    def _handle_projects_list(self):
-        candidate_dirs = [
-            Path.home() / "Projects",
-            Path.home() / "src",
-            Path.home() / "Code",
-            Path.home() / "workspace",
-            Path.home() / "dev",
-            Path.home() / ".dotfiles",
-            Path.cwd()
-        ]
-        scanned_dirs = set()
-        projects = []
-
-        for base in candidate_dirs:
-            if not base.exists() or not base.is_dir() or str(base.resolve()) in scanned_dirs:
-                continue
-            scanned_dirs.add(str(base.resolve()))
-
-            if (base / ".git").exists() or (base / "pyproject.toml").exists() or (base / "package.json").exists():
-                projects.append(self._get_project_meta(base))
-                continue
-
-            try:
-                for item in base.iterdir():
-                    if item.is_dir() and not item.name.startswith("."):
-                        if (item / ".git").exists() or (item / "pyproject.toml").exists() or (item / "package.json").exists() or (item / "Cargo.toml").exists():
-                            if str(item.resolve()) not in scanned_dirs:
-                                scanned_dirs.add(str(item.resolve()))
-                                projects.append(self._get_project_meta(item))
-            except Exception:
-                pass
-
-        self._send_json({"projects": projects, "total_projects": len(projects)})
-
-    def _get_project_meta(self, path: Path) -> Dict[str, Any]:
-        p_type = "General"
-        if (path / "pyproject.toml").exists() or (path / "requirements.txt").exists() or (path / "setup.py").exists():
-            p_type = "Python"
-        elif (path / "package.json").exists():
-            p_type = "Node.js"
-        elif (path / "Cargo.toml").exists():
-            p_type = "Rust"
-        elif (path / "go.mod").exists():
-            p_type = "Go"
-        elif (path / "CMakeLists.txt").exists():
-            p_type = "C/C++"
-
-        branch = "main"
-        if (path / ".git").exists():
-            try:
-                res = subprocess.run(["git", "branch", "--show-current"], cwd=str(path), capture_output=True, text=True)
-                if res.returncode == 0 and res.stdout.strip():
-                    branch = res.stdout.strip()
-            except Exception:
-                pass
-
-        return {
-            "name": path.name,
-            "path": str(path.resolve()),
-            "type": p_type,
-            "branch": branch,
-            "has_git": (path / ".git").exists()
-        }
-
     def _handle_network_status(self):
         import socket
         hostname = socket.gethostname()
@@ -755,65 +689,25 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             env["HOME"] = str(Path.home())
             env["PATH"] = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
 
-            cwd = Path.cwd()
-            local_pull_out = ""
-            if (cwd / ".git").exists() and (cwd / "targz_manager").exists():
-                try:
-                    pull_res = subprocess.run(
-                        ["git", "pull", "--ff-only"],
-                        cwd=str(cwd),
-                        capture_output=True,
-                        text=True,
-                        timeout=30
-                    )
-                    local_pull_out = (pull_res.stdout + pull_res.stderr).strip()
-                except Exception as e:
-                    local_pull_out = f"Git pull notice: {e}"
-
             try:
-                install_sh_path = cwd / "install.sh"
-                repo_root_install_sh = Path(__file__).parent.parent / "install.sh"
-                if install_sh_path.exists():
-                    target_script = str(install_sh_path.resolve())
-                    res = subprocess.run(
-                        ["bash", target_script],
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                        env=env
-                    )
-                elif repo_root_install_sh.exists():
-                    target_script = str(repo_root_install_sh.resolve())
-                    res = subprocess.run(
-                        ["bash", target_script],
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                        env=env
-                    )
-                else:
-                    url = "https://raw.githubusercontent.com/aradar46/Clinux/main/install.sh"
-                    with urllib.request.urlopen(url, timeout=30) as resp:
-                        script_content = resp.read().decode("utf-8")
-                    res = subprocess.run(
-                        ["bash"],
-                        input=script_content,
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                        env=env
-                    )
-                combined_output = "\n".join(filter(None, [local_pull_out, res.stdout, res.stderr])).strip()
+                cmd = "curl -fsSL https://raw.githubusercontent.com/aradar46/Clinux/main/install.sh | bash"
+                res = subprocess.run(
+                    ["bash", "-c", cmd],
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    env=env
+                )
+                output = (res.stdout + res.stderr).strip()
                 self._send_json({
                     "success": res.returncode == 0,
                     "returncode": res.returncode,
-                    "output": combined_output or "Update completed."
+                    "output": output or "Update completed."
                 })
             except Exception as e:
                 self._send_json({
                     "success": False,
-                    "error": str(e),
-                    "output": local_pull_out
+                    "error": str(e)
                 }, status=500)
 
     def _handle_post_discovered(self, path: str, body: Dict[str, Any]):
