@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any, Set
 
 from .db import Database
-from .installer import Installer, DEFAULT_OPT_DIR, DEFAULT_DESKTOP_DIR, DEFAULT_BIN_DIR
+from .installer import Installer, DEFAULT_OPT_DIR, DEFAULT_DESKTOP_DIR
 
 
 class SystemScanner:
