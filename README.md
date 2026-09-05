@@ -11,6 +11,8 @@
 - **AI & Skills**: Toggles agent skills on/off across Claude Code, Antigravity, and Codex. Prunes Hugging Face, PyTorch, and Ollama model weights and session logs.
 - **Dotfiles**: Runs GNU Stow against `~/.dotfiles`, supports selective stow/unstow per package, and syncs GNOME settings (works just for me).
 
+![1788585092103](image/README/1788585092103.png)
+
 ## Quick Start
 
 Python 3.8+ only.
@@ -27,7 +29,7 @@ cd Clinux
 python3 app.py
 ```
 
-##  Paths
+## Paths
 
 | Item            | Path                                          |
 | --------------- | --------------------------------------------- |
