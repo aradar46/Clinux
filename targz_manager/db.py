@@ -51,6 +51,9 @@ DEFAULT_OPTIONS = {
             "require_confirmation": True,
             "show_reclaimable_space": True
         }
+    },
+    "ai": {
+        "skills_root": ""
     }
 }
 

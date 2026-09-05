@@ -13,7 +13,8 @@ class MachineManager:
     def __init__(self, db: Database):
         self.db = db
         self.dm = DotfilesManager()
-        self.sm = SkillManager()
+        skills_root = self.db.get_options().get("ai", {}).get("skills_root", "")
+        self.sm = SkillManager(skills_root=Path(skills_root)) if skills_root else SkillManager()
 
     def _parse_toml(self, content: str) -> Dict[str, Any]:
         result = {}

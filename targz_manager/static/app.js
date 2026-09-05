@@ -1200,6 +1200,8 @@ class ClinuxApp {
         const data = await res.json();
         this.aiSkills = data.skills || [];
         this.aiCategories = data.categories || [];
+        const rootInput = document.getElementById('aiSkillsRoot');
+        if (rootInput && document.activeElement !== rootInput) rootInput.value = data.skills_root || '';
 
         const badge = document.getElementById('aiSkillsBadge');
         const countPill = document.getElementById('aiSkillsCount');
@@ -1223,13 +1225,19 @@ class ClinuxApp {
     select.innerHTML = html;
   }
 
-  updateAgentTargets() {
-    const targets = [];
-    if (document.getElementById('agentTargetClaude')?.checked) targets.push('claude');
-    if (document.getElementById('agentTargetAgy')?.checked) targets.push('agy');
-    if (document.getElementById('agentTargetGemini')?.checked) targets.push('gemini');
-    if (document.getElementById('agentTargetCodex')?.checked) targets.push('codex');
-    this.selectedAgentTargets = targets;
+  async saveAISkillsRoot() {
+    const skillsRoot = document.getElementById('aiSkillsRoot')?.value.trim();
+    if (!skillsRoot) return this.toast('Enter a skills-library path', 'error');
+    try {
+      const res = await fetch('/api/ai/skills/source', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skills_root: skillsRoot })
+      });
+      const data = await res.json();
+      if (!res.ok) return this.toast(data.error || 'Could not use that path', 'error');
+      this.toast('Skills library configured', 'success');
+      await this.fetchAISkills();
+    } catch (e) { this.toast('Could not configure skills library', 'error'); }
   }
 
   filterSkills(query) {
@@ -1276,34 +1284,22 @@ class ClinuxApp {
       html += `
         <div class="retro-panel" style="margin-top:0; margin-bottom:10px;">
           <div class="retro-panel-title">${this.escapeHtml(catName)}</div>
-          <table class="retro-table" style="table-layout: fixed; width: 100%;">
-            <thead>
-              <tr>
-                <th style="width:36px; text-align:center;">ST</th>
-                <th style="width:220px;">SKILL NAME</th>
-                <th>DESCRIPTION</th>
-                <th style="width:100px; text-align:center;">STATUS</th>
-                <th style="width:90px; text-align:center;">ACTION</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${skillList.map(skill => `
-                <tr class="${skill.active ? 'selected' : ''}" style="cursor:pointer;" onclick="if(event.target.tagName !== 'BUTTON' && event.target.tagName !== 'INPUT') app.toggleSkill('${this.escapeHtml(skill.key)}', ${!skill.active})">
-                  <td style="color:${skill.active ? 'var(--c-terminal-green-bright)' : 'var(--text-muted)'}; text-align:center;">
-                    ${skill.active ? '●' : '○'}
-                  </td>
-                  <td style="white-space: normal; word-break: break-word;"><strong style="color:${skill.active ? 'var(--c-terminal-green-bright)' : 'var(--c-warm-beige)'};">${this.escapeHtml(skill.display_name || skill.name)}</strong></td>
-                  <td style="font-size:11px; color:var(--text-muted); white-space: normal; word-break: break-word;">${this.escapeHtml(skill.description || '')}</td>
-                  <td style="text-align:center;"><strong style="color:${skill.active ? 'var(--c-terminal-green-bright)' : 'var(--text-muted)'};">${skill.active ? 'ENABLED' : 'DISABLED'}</strong></td>
-                  <td style="text-align:center;">
+          <div class="ai-skill-card-grid">
+            ${skillList.map(skill => {
+              return `
+                <div class="ai-skill-card ${skill.active ? 'active' : ''}" role="button" tabindex="0"
+                     onclick="if(event.target.tagName !== 'BUTTON') app.toggleSkill('${this.escapeHtml(skill.key)}', ${!skill.active})">
+                  <strong class="ai-skill-card-name">${this.escapeHtml(skill.display_name || skill.name)}</strong>
+                  <div class="ai-skill-card-footer">
+                    <span class="ai-skill-card-status">${skill.active ? '● ACTIVE' : '○ INACTIVE'}</span>
                     <button class="retro-btn ${skill.active ? '' : 'retro-btn-green'}" onclick="event.stopPropagation(); app.toggleSkill('${this.escapeHtml(skill.key)}', ${!skill.active})">
-                      ${skill.active ? '[ OFF ]' : '[ ON ]'}
+                      ${skill.active ? 'DISABLE' : 'ENABLE'}
                     </button>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
         </div>
       `;
     }
@@ -1312,14 +1308,11 @@ class ClinuxApp {
   }
 
   async toggleSkill(skillKey, active) {
-    this.updateAgentTargets();
-    const targets = this.selectedAgentTargets.length > 0 ? this.selectedAgentTargets : ['claude', 'agy'];
-
     try {
       const res = await fetch('/api/ai/skills/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: skillKey, active, targets })
+        body: JSON.stringify({ key: skillKey, active })
       });
       if (res.ok) {
         this.toast(`${active ? 'Activated' : 'Deactivated'} ${skillKey}`, 'success');
@@ -1331,8 +1324,6 @@ class ClinuxApp {
   }
 
   async bulkToggleCurrentCategory(active) {
-    this.updateAgentTargets();
-    const targets = this.selectedAgentTargets.length > 0 ? this.selectedAgentTargets : ['claude', 'agy'];
     const cat = this.aiFilterCategory;
 
     if (cat === 'all') {
@@ -1340,14 +1331,14 @@ class ClinuxApp {
         await fetch('/api/ai/skills/toggle', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ category: c, active, targets })
+          body: JSON.stringify({ category: c, active })
         });
       }
     } else {
       await fetch('/api/ai/skills/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: cat, active, targets })
+        body: JSON.stringify({ category: cat, active })
       });
     }
     this.toast(`Updated skills`, 'success');

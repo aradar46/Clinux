@@ -103,7 +103,8 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         self.scanner = SystemScanner(self.db, self.installer)
         self.cleaner = SystemCleaner()
         self.disk_analyzer = DiskAnalyzer(cleaner=self.cleaner)
-        self.skill_manager = SkillManager()
+        skills_root = self.db.get_options().get("ai", {}).get("skills_root", "")
+        self.skill_manager = SkillManager(skills_root=Path(skills_root)) if skills_root else SkillManager()
         self.ai_storage = AIStorageManager()
         self.dotfiles_manager = DotfilesManager()
         super().__init__(*args, **kwargs)
@@ -273,6 +274,8 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         self._send_json(results)
 
     def _handle_api_ai_skills(self):
+        # Keep mirrors correct after an app restart or a target-path upgrade.
+        sync_result = self.skill_manager.sync_active_skills()
         skills = self.skill_manager.get_all_skills()
         categories = self.skill_manager.get_categories()
         self._send_json({
@@ -280,7 +283,10 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             "categories": categories,
             "targets": list(self.skill_manager.target_dirs.keys()),
             "total_skills": len(skills),
-            "active_skills": sum(1 for s in skills if s["active"])
+            "active_skills": sum(1 for s in skills if s["active"]),
+            "skills_root": str(self.skill_manager.skills_root),
+            "active_skills_path": str(self.skill_manager.active_dir),
+            "sync_errors": sync_result["errors"],
         })
 
     def _handle_api_ai_storage(self):
@@ -544,7 +550,23 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._send_error_json("Endpoint not found", status=404)
 
     def _handle_post_ai(self, path: str, body: Dict[str, Any]):
-        if path == '/api/ai/skills/toggle':
+        if path == '/api/ai/skills/source':
+            raw_path = str(body.get('skills_root', '')).strip()
+            if not raw_path:
+                self._send_error_json("skills_root is required", status=400)
+                return
+            root = Path(raw_path).expanduser()
+            if not root.is_dir():
+                self._send_error_json("Skills root must be an existing directory", status=400)
+                return
+            options = self.db.get_options()
+            options.setdefault("ai", {})["skills_root"] = str(root)
+            self.db.save_options(options)
+            self.skill_manager = SkillManager(skills_root=root)
+            result = self.skill_manager.sync_active_skills()
+            self._send_json({"success": True, "skills_root": str(root), **result})
+
+        elif path == '/api/ai/skills/toggle':
             category = body.get('category')
             key = body.get('key')
             active = body.get('active', True)

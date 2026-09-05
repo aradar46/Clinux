@@ -17,27 +17,54 @@ class SkillManager:
     Claude Code, Antigravity/Agy, Gemini, and Codex.
     """
 
-    DEFAULT_REPO_DIRS = [
-        Path.home() / ".claude" / "skills" / "repo",
-        Path.home() / ".config" / "skills",
-    ]
+    # A skills root contains category directories and an ``active_skills``
+    # directory.  Example: root/writing/my-skill/SKILL.md.
+    DEFAULT_SKILLS_ROOT = Path.home() / ".config" / "skills"
 
     DEFAULT_TARGET_DIRS = {
         "claude": Path.home() / ".claude" / "skills",
-        "agy": Path.home() / ".claude" / "skills" / "Agy",
-        "gemini": Path.home() / ".gemini" / "config" / "skills",
+        "agy": Path.home() / ".gemini" / "antigravity-cli" / "skills",
+        "gemini": Path.home() / ".gemini" / "skills",
         "codex": Path.home() / ".codex" / "skills",
     }
 
+    # Gemini and Antigravity keep user skills in more than one supported
+    # location on installations in the wild. Keep each user-facing location
+    # in sync; deliberately exclude builtin and backup directories.
+    DEFAULT_EXTRA_TARGET_DIRS = {
+        "gemini": [Path.home() / ".gemini" / "config" / "skills"],
+        "agy": [Path.home() / ".gemini" / "antigravity" / "skills"],
+    }
+    LEGACY_AGY_DIR = Path.home() / ".claude" / "skills" / "Agy"
+
     def __init__(
         self,
+        skills_root: Optional[Path] = None,
         repo_dirs: Optional[List[Path]] = None,
         target_dirs: Optional[Dict[str, Path]] = None,
     ):
-        self.repo_dirs = [Path(p) for p in (repo_dirs or self.DEFAULT_REPO_DIRS)]
+        # repo_dirs is retained for callers using the previous public API.
+        # New callers should pass one categorized skills_root.
+        if skills_root is not None:
+            self.skills_root = Path(skills_root).expanduser().resolve()
+        elif repo_dirs:
+            self.skills_root = Path(repo_dirs[0]).expanduser().resolve()
+        else:
+            self.skills_root = self.DEFAULT_SKILLS_ROOT
+        self.repo_dirs = [self.skills_root]
+        self.active_dir = self.skills_root / "active_skills"
         self.target_dirs = {
             k: Path(v) for k, v in (target_dirs or self.DEFAULT_TARGET_DIRS).items()
         }
+        self.extra_target_dirs = (
+            {} if target_dirs else self.DEFAULT_EXTRA_TARGET_DIRS
+        )
+
+    def _target_paths(self, target_name: str) -> List[Path]:
+        """Return every directory that must mirror an agent's active skills."""
+        paths = [self.target_dirs[target_name]]
+        paths.extend(self.extra_target_dirs.get(target_name, []))
+        return paths
 
     @staticmethod
     def parse_skill_metadata(skill_dir: Path) -> Tuple[str, str]:
@@ -100,6 +127,8 @@ class SkillManager:
             if not r_dir.exists():
                 continue
             for item in r_dir.iterdir():
+                if item.name == "active_skills":
+                    continue
                 if item.is_dir() and not item.name.startswith("."):
                     for sub in item.iterdir():
                         if sub.is_dir() and (sub / "SKILL.md").exists():
@@ -122,6 +151,8 @@ class SkillManager:
                 if not cat_item.is_dir() or cat_item.name.startswith("."):
                     continue
 
+                if cat_item.name == "active_skills":
+                    continue
                 category = cat_item.name
                 for skill_dir in sorted(cat_item.iterdir()):
                     if not skill_dir.is_dir() or not (skill_dir / "SKILL.md").exists():
@@ -150,31 +181,29 @@ class SkillManager:
 
     def get_skill_status_by_name(self, skill_name: str, skill_path: Optional[Path] = None) -> Dict[str, Any]:
         """
-        Check if a skill is actively symlinked into target agent directories.
+        Check whether a skill is linked into the shared active_skills directory.
         """
         active_targets = {}
         is_any_active = False
 
-        for target_name, target_dir in self.target_dirs.items():
-            if not target_dir.exists():
-                active_targets[target_name] = False
-                continue
+        active_link = self.active_dir / skill_name
+        if active_link.is_symlink():
+            try:
+                is_any_active = not skill_path or active_link.resolve() == skill_path.resolve()
+            except OSError:
+                is_any_active = False
 
-            dest = target_dir / skill_name
-            if dest.is_symlink():
+        # Targets are mirrors, so report whether each has the matching managed
+        # symlink, while active remains the state of the shared directory.
+        for target_name in self.target_dirs:
+            matches = []
+            for target_dir in self._target_paths(target_name):
+                dest = target_dir / skill_name
                 try:
-                    resolved = dest.resolve()
-                    if skill_path:
-                        matches = (resolved == skill_path.resolve())
-                    else:
-                        matches = True
-                    active_targets[target_name] = matches
-                    if matches:
-                        is_any_active = True
-                except Exception:
-                    active_targets[target_name] = False
-            else:
-                active_targets[target_name] = False
+                    matches.append(dest.is_symlink() and dest.resolve() == active_link.resolve())
+                except OSError:
+                    matches.append(False)
+            active_targets[target_name] = is_any_active and all(matches)
 
         return {
             "active": is_any_active,
@@ -210,40 +239,36 @@ class SkillManager:
         self, skill_key: str, targets: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
-        Activate a skill by creating symlinks in target agent directories.
+        Activate a skill in active_skills, then mirror it to every agent.
         """
         skill_path = self._find_skill_path(skill_key)
         if not skill_path:
             return {"success": False, "error": f"Skill '{skill_key}' not found"}
 
         skill_name = skill_path.name
-        selected_targets = targets or list(self.target_dirs.keys())
+        # targets is intentionally ignored: every agent mirrors active_skills.
         activated = []
         errors = []
-
-        for tgt in selected_targets:
-            if tgt not in self.target_dirs:
-                continue
-
-            target_dir = self.target_dirs[tgt]
-            target_dir.mkdir(parents=True, exist_ok=True)
-            dest = target_dir / skill_name
-
-            if dest.is_symlink():
-                try:
-                    dest.unlink()
-                except Exception as e:
-                    errors.append(f"Failed to remove stale symlink for {tgt}: {e}")
-                    continue
-            elif dest.exists() and dest.is_dir():
-                errors.append(f"Real directory exists at {dest} for {tgt}. Skipping to prevent data loss.")
-                continue
-
+        self.active_dir.mkdir(parents=True, exist_ok=True)
+        active_link = self.active_dir / skill_name
+        if active_link.is_symlink():
             try:
-                dest.symlink_to(skill_path)
-                activated.append(tgt)
-            except Exception as e:
-                errors.append(f"Failed to symlink for {tgt}: {e}")
+                if active_link.resolve() != skill_path.resolve():
+                    return {
+                        "success": False,
+                        "error": f"An active skill named '{skill_name}' already points to another category",
+                    }
+            except OSError:
+                pass
+            active_link.unlink()
+        elif active_link.exists():
+            return {"success": False, "error": f"Refused to replace real directory at {active_link}"}
+        try:
+            active_link.symlink_to(skill_path)
+        except OSError as e:
+            return {"success": False, "error": f"Failed to activate skill: {e}"}
+
+        activated, errors = self._sync_skill_to_targets(skill_name)
 
         return {
             "success": len(errors) == 0 or len(activated) > 0,
@@ -256,30 +281,37 @@ class SkillManager:
         self, skill_key: str, targets: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
-        Deactivate a skill by removing symlinks from target agent directories.
-        Real directories are never removed.
+        Deactivate a skill from active_skills and remove its managed mirrors.
         """
         parts = skill_key.split("/", 1)
         skill_name = parts[1] if len(parts) > 1 else parts[0]
-        selected_targets = targets or list(self.target_dirs.keys())
         deactivated = []
         errors = []
+        active_link = self.active_dir / skill_name
+        if active_link.is_symlink():
+            try:
+                requested_path = self._find_skill_path(skill_key)
+                if requested_path and active_link.resolve() != requested_path.resolve():
+                    return {
+                        "success": False,
+                        "error": f"Active skill '{skill_name}' belongs to another category",
+                    }
+                active_link.unlink()
+            except OSError as e:
+                errors.append(f"Failed to remove active skill symlink: {e}")
+        elif active_link.exists():
+            errors.append(f"Refused to remove real directory at {active_link}")
 
-        for tgt in selected_targets:
-            if tgt not in self.target_dirs:
-                continue
-
-            target_dir = self.target_dirs[tgt]
-            dest = target_dir / skill_name
-
-            if dest.is_symlink():
-                try:
-                    dest.unlink()
-                    deactivated.append(tgt)
-                except Exception as e:
-                    errors.append(f"Failed to remove symlink for {tgt}: {e}")
-            elif dest.exists():
-                errors.append(f"Refused to remove real directory at {dest} for {tgt}")
+        for tgt in self.target_dirs:
+            for target_dir in self._target_paths(tgt):
+                dest = target_dir / skill_name
+                if dest.is_symlink():
+                    try:
+                        dest.unlink()
+                        deactivated.append(tgt)
+                    except OSError as e:
+                        errors.append(f"Failed to remove mirror for {tgt}: {e}")
+        self._remove_legacy_agy_mirror(skill_name)
 
         return {
             "success": len(errors) == 0 or len(deactivated) > 0,
@@ -287,6 +319,52 @@ class SkillManager:
             "deactivated_targets": deactivated,
             "errors": errors,
         }
+
+    def _sync_skill_to_targets(self, skill_name: str) -> Tuple[List[str], List[str]]:
+        """Create or refresh each agent's safe, managed mirror symlink."""
+        synced, errors = [], []
+        source = self.active_dir / skill_name
+        for target_name in self.target_dirs:
+            for target_dir in self._target_paths(target_name):
+                try:
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    dest = target_dir / skill_name
+                    if dest.is_symlink():
+                        dest.unlink()
+                    elif dest.exists():
+                        errors.append(f"Real directory exists at {dest} for {target_name}; skipping.")
+                        continue
+                    dest.symlink_to(source)
+                    synced.append(target_name)
+                except OSError as e:
+                    errors.append(f"Failed to mirror skill for {target_name}: {e}")
+        self._remove_legacy_agy_mirror(skill_name)
+        return synced, errors
+
+    def _remove_legacy_agy_mirror(self, skill_name: str) -> None:
+        """Remove only the old managed Agy links accidentally placed in Claude."""
+        legacy_link = self.LEGACY_AGY_DIR / skill_name
+        if legacy_link.is_symlink():
+            try:
+                legacy_link.unlink()
+            except OSError:
+                return
+        try:
+            self.LEGACY_AGY_DIR.rmdir()
+        except OSError:
+            pass  # It is either absent or contains user-owned content.
+
+    def sync_active_skills(self) -> Dict[str, Any]:
+        """Bring all agent folders in line with the shared active_skills set."""
+        synced, errors = [], []
+        if not self.active_dir.exists():
+            return {"success": True, "synced": synced, "errors": errors}
+        for entry in self.active_dir.iterdir():
+            if entry.is_symlink():
+                names, sync_errors = self._sync_skill_to_targets(entry.name)
+                synced.extend(names)
+                errors.extend(sync_errors)
+        return {"success": not errors, "synced": synced, "errors": errors}
 
     def toggle_category(
         self, category: str, active: bool, targets: Optional[List[str]] = None

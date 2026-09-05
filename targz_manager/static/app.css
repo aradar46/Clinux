@@ -568,6 +568,74 @@ body {
   color: var(--c-warm-beige);
 }
 
+/* Compact AI skill chooser: four cards across instead of long rows. */
+.ai-skill-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px;
+}
+
+.ai-skill-card {
+  min-width: 0;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--c-shadow);
+  background: var(--c-near-black);
+  cursor: pointer;
+}
+
+.ai-skill-card:hover,
+.ai-skill-card:focus {
+  border-color: var(--c-terminal-green);
+  background: rgba(79, 143, 98, 0.15);
+  outline: none;
+}
+
+.ai-skill-card.active {
+  border-color: var(--c-terminal-green);
+}
+
+.ai-skill-card-name {
+  overflow: hidden;
+  color: var(--c-warm-beige);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-skill-card.active .ai-skill-card-name,
+.ai-skill-card.active .ai-skill-card-status {
+  color: var(--c-terminal-green-bright);
+}
+
+.ai-skill-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: auto;
+}
+
+.ai-skill-card-status {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.ai-skill-card-footer .retro-btn {
+  min-width: 62px;
+  padding: 2px 5px;
+  font-size: 10px;
+}
+
+@media (max-width: 760px) {
+  .ai-skill-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* Progress bar in Terminal Style */
 .retro-progress {
   font-family: var(--font-mono);

@@ -28,7 +28,7 @@ class TestAIManager(unittest.TestCase):
             "---\nname: caveman\ndescription: Terse agent responses\n---\n# Caveman\n"
         )
 
-        # Mock agent targets
+        # Mock agent targets. They each mirror the one active_skills directory.
         self.claude_skills = self.base_path / "claude_skills"
         self.claude_skills.mkdir(parents=True)
         self.agy_skills = self.claude_skills / "Agy"
@@ -63,51 +63,53 @@ class TestAIManager(unittest.TestCase):
         status = self.manager.get_skill_status("science/literature-review")
         self.assertFalse(status["active"])
 
-        # Activate for claude and agy
-        res = self.manager.activate_skill("science/literature-review", targets=["claude", "agy"])
+        res = self.manager.activate_skill("science/literature-review")
         self.assertTrue(res["success"])
 
-        # Check symlinks exist
+        # The source is linked once in active_skills and mirrored everywhere.
+        active_link = self.repo_dir / "active_skills" / "literature-review"
         claude_link = self.claude_skills / "literature-review"
         agy_link = self.agy_skills / "literature-review"
         codex_link = self.codex_skills / "literature-review"
 
+        self.assertTrue(active_link.is_symlink())
         self.assertTrue(claude_link.is_symlink())
         self.assertTrue(agy_link.is_symlink())
-        self.assertFalse(codex_link.exists())
+        self.assertTrue(codex_link.is_symlink())
 
         status = self.manager.get_skill_status("science/literature-review")
         self.assertTrue(status["active"])
         self.assertTrue(status["active_targets"]["claude"])
         self.assertTrue(status["active_targets"]["agy"])
-        self.assertFalse(status["active_targets"]["codex"])
+        self.assertTrue(status["active_targets"]["codex"])
 
         # Deactivate
-        deact = self.manager.deactivate_skill("science/literature-review", targets=["claude", "agy"])
+        deact = self.manager.deactivate_skill("science/literature-review")
         self.assertTrue(deact["success"])
+        self.assertFalse(active_link.exists())
         self.assertFalse(claude_link.exists())
         self.assertFalse(agy_link.exists())
 
     def test_protect_real_directory(self):
-        # Create real directory with same name in target
-        real_dir = self.claude_skills / "caveman"
-        real_dir.mkdir()
+        # A real directory in active_skills is never removed.
+        real_dir = self.repo_dir / "active_skills" / "caveman"
+        real_dir.mkdir(parents=True)
         (real_dir / "keep_me.txt").write_text("critical data")
 
         # Deactivating should refuse to delete real directory
-        res = self.manager.deactivate_skill("developer-utilities/caveman", targets=["claude"])
+        res = self.manager.deactivate_skill("developer-utilities/caveman")
         self.assertTrue(real_dir.exists())
         self.assertTrue((real_dir / "keep_me.txt").exists())
 
     def test_category_toggle(self):
         # Activate entire science category
-        res = self.manager.toggle_category("science", active=True, targets=["claude", "agy"])
+        res = self.manager.toggle_category("science", active=True)
         self.assertTrue(res["success"])
         claude_link = self.claude_skills / "literature-review"
         self.assertTrue(claude_link.is_symlink())
 
         # Deactivate entire science category
-        res_deact = self.manager.toggle_category("science", active=False, targets=["claude", "agy"])
+        res_deact = self.manager.toggle_category("science", active=False)
         self.assertTrue(res_deact["success"])
         self.assertFalse(claude_link.exists())
 

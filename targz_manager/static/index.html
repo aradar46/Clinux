@@ -203,16 +203,15 @@
           <!-- Skills Section -->
           <div id="aiSkillsSection">
             <div class="retro-panel" style="margin-top:0; margin-bottom:8px;">
-              <div class="retro-panel-title">TARGET AGENTS</div>
+              <div class="retro-panel-title">SHARED SKILLS LIBRARY</div>
               <div style="display:flex; gap:12px; align-items:center;">
-                <label><input type="checkbox" id="agentTargetClaude" checked onchange="app.updateAgentTargets()"> Claude</label>
-                <label><input type="checkbox" id="agentTargetAgy" checked onchange="app.updateAgentTargets()"> Antigravity</label>
-                <label><input type="checkbox" id="agentTargetGemini" onchange="app.updateAgentTargets()"> Gemini</label>
-                <label><input type="checkbox" id="agentTargetCodex" onchange="app.updateAgentTargets()"> Codex</label>
+                <input type="text" id="aiSkillsRoot" class="retro-input" style="flex:1;" placeholder="Path containing categories and active_skills">
+                <button class="retro-btn" onclick="app.saveAISkillsRoot()">USE PATH</button>
                 <div style="flex:1;"></div>
                 <button class="retro-btn retro-btn-green" onclick="app.bulkToggleCurrentCategory(true)">Enable Category</button>
                 <button class="retro-btn" onclick="app.bulkToggleCurrentCategory(false)">Disable Category</button>
               </div>
+              <div style="margin-top:6px; font-size:11px; color:var(--text-muted);">Enabled skills are symlinked into <code>active_skills</code>; Claude, Antigravity, Gemini, and Codex folders mirror it automatically.</div>
             </div>
 
             <div id="aiSkillsGrid" style="display:flex; flex-direction:column; gap:12px;">
