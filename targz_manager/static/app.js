@@ -1286,10 +1286,12 @@ class ClinuxApp {
           <div class="retro-panel-title">${this.escapeHtml(catName)}</div>
           <div class="ai-skill-card-grid">
             ${skillList.map(skill => {
+              const description = skill.description || 'No description provided.';
               return `
                 <div class="ai-skill-card ${skill.active ? 'active' : ''}" role="button" tabindex="0"
                      onclick="if(event.target.tagName !== 'BUTTON') app.toggleSkill('${this.escapeHtml(skill.key)}', ${!skill.active})">
-                  <strong class="ai-skill-card-name">${this.escapeHtml(skill.display_name || skill.name)}</strong>
+                  <strong class="ai-skill-card-name" title="${this.escapeHtml(description)}">${this.escapeHtml(skill.display_name || skill.name)}</strong>
+                  <span class="ai-skill-tooltip" role="tooltip">${this.escapeHtml(description)}</span>
                   <div class="ai-skill-card-footer">
                     <span class="ai-skill-card-status">${skill.active ? '● ACTIVE' : '○ INACTIVE'}</span>
                     <button class="retro-btn ${skill.active ? '' : 'retro-btn-green'}" onclick="event.stopPropagation(); app.toggleSkill('${this.escapeHtml(skill.key)}', ${!skill.active})">

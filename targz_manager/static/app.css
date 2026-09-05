@@ -577,6 +577,7 @@ body {
 }
 
 .ai-skill-card {
+  position: relative;
   min-width: 0;
   min-height: 48px;
   display: flex;
@@ -610,6 +611,27 @@ body {
 .ai-skill-card.active .ai-skill-card-name,
 .ai-skill-card.active .ai-skill-card-status {
   color: var(--c-terminal-green-bright);
+}
+
+.ai-skill-tooltip {
+  position: absolute;
+  z-index: 2;
+  right: 4px;
+  bottom: calc(100% + 4px);
+  left: 4px;
+  display: none;
+  padding: 6px;
+  border: 1px solid var(--c-terminal-green);
+  background: var(--c-near-black);
+  color: var(--c-warm-beige);
+  font-size: 10px;
+  line-height: 1.35;
+  pointer-events: none;
+  white-space: normal;
+}
+
+.ai-skill-card-name:hover + .ai-skill-tooltip {
+  display: block;
 }
 
 .ai-skill-card-footer {
