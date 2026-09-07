@@ -20,6 +20,20 @@ class DotfilesManager:
 
     ALLOWED_STOW_ACTIONS = {"stow", "unstow", "restow"}
     ALLOWED_GIT_ACTIONS = {"pull", "commit", "push", "commit_push", "status", "diff", "log", "init"}
+    ALLOWED_GIT_ACTIONS = {
+        "pull",
+        "rebase",
+        "pull_overwrite",
+        "force_pull",
+        "fetch",
+        "commit",
+        "push",
+        "commit_push",
+        "status",
+        "diff",
+        "log",
+        "init",
+    }
 
     def __init__(
         self,
@@ -439,6 +453,7 @@ class DotfilesManager:
             )
             raw_out = (res.stdout + "\n" + res.stderr).strip()
             summary = raw_out or f"Stow {action} completed successfully for {', '.join(targets)}."
+            summary = raw_out or f"{action.capitalize()} completed successfully for {', '.join(targets)}."
 
             return {
                 "success": res.returncode == 0,
@@ -583,6 +598,71 @@ class DotfilesManager:
                     "output": out,
                     "returncode": res.returncode,
                     "error": None if res.returncode == 0 else "Git pull failed",
+                }
+
+            elif action == "rebase":
+                cmd = ["git", "pull", "--rebase"]
+                res = subprocess.run(cmd, cwd=str(self.repo_dir), capture_output=True, text=True, timeout=60)
+                out = (res.stdout + res.stderr).strip()
+                return {
+                    "success": res.returncode == 0,
+                    "action": action,
+                    "command": "git pull --rebase",
+                    "output": out,
+                    "returncode": res.returncode,
+                    "error": None if res.returncode == 0 else "Git rebase pull failed",
+                }
+
+            elif action in ("pull_overwrite", "force_pull"):
+                fetch_res = subprocess.run(["git", "fetch", "--all"], cwd=str(self.repo_dir), capture_output=True, text=True, timeout=60)
+                if fetch_res.returncode != 0:
+                    return {
+                        "success": False,
+                        "action": action,
+                        "command": "git fetch --all",
+                        "output": (fetch_res.stdout + "\n" + fetch_res.stderr).strip(),
+                        "returncode": fetch_res.returncode,
+                        "error": "Git fetch failed",
+                    }
+
+                # Resolve upstream branch target
+                target_ref = "@{u}"
+                chk_u = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], cwd=str(self.repo_dir), capture_output=True, text=True, timeout=5)
+                if chk_u.returncode != 0:
+                    git_info = self.get_git_info()
+                    branch = git_info.get("branch") or "main"
+                    target_ref = f"origin/{branch}"
+
+                r_res = subprocess.run(["git", "reset", "--hard", target_ref], cwd=str(self.repo_dir), capture_output=True, text=True, timeout=30)
+                c_res = subprocess.run(["git", "clean", "-fd"], cwd=str(self.repo_dir), capture_output=True, text=True, timeout=30)
+
+                combined = [
+                    f"--> git fetch --all:\n{(fetch_res.stdout + fetch_res.stderr).strip() or 'OK'}",
+                    f"--> git reset --hard {target_ref}:\n{(r_res.stdout + r_res.stderr).strip() or 'OK'}",
+                ]
+                if c_res.stdout or c_res.stderr:
+                    combined.append(f"--> git clean -fd:\n{(c_res.stdout + c_res.stderr).strip()}")
+
+                return {
+                    "success": r_res.returncode == 0,
+                    "action": action,
+                    "command": f"git fetch --all && git reset --hard {target_ref} && git clean -fd",
+                    "output": "\n\n".join(combined),
+                    "returncode": r_res.returncode,
+                    "error": None if r_res.returncode == 0 else f"Reset to {target_ref} failed",
+                }
+
+            elif action == "fetch":
+                cmd = ["git", "fetch", "--all"]
+                res = subprocess.run(cmd, cwd=str(self.repo_dir), capture_output=True, text=True, timeout=60)
+                out = (res.stdout + "\n" + res.stderr).strip() or "Fetch completed."
+                return {
+                    "success": res.returncode == 0,
+                    "action": action,
+                    "command": "git fetch --all",
+                    "output": out,
+                    "returncode": res.returncode,
+                    "error": None if res.returncode == 0 else "Git fetch failed",
                 }
 
             elif action == "commit":

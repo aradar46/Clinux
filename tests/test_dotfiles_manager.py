@@ -186,6 +186,18 @@ class TestDotfilesManager(unittest.TestCase):
         res_push = self.mgr.run_git("push", force=True)
         self.assertIn("--force-with-lease", res_push["command"])
 
+        # Test rebase action command
+        res_rebase = self.mgr.run_git("rebase")
+        self.assertIn("git pull --rebase", res_rebase["command"])
+
+        # Test fetch action command
+        res_fetch = self.mgr.run_git("fetch")
+        self.assertIn("git fetch --all", res_fetch["command"])
+
+        # Test pull_overwrite / force_pull action
+        res_overwrite = self.mgr.run_git("pull_overwrite")
+        self.assertIn("git reset --hard", res_overwrite["command"])
+
     def test_run_command_compatibility(self):
         # Legacy script dispatcher check
         res = self.mgr.run_command("check")

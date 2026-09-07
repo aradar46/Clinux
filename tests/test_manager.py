@@ -13,9 +13,6 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from targz_manager.db import Database
-from targz_manager.installer import Installer, ArchiveError
-from targz_manager.server import create_server
 from core.db import Database
 from core.installer import Installer, ArchiveError
 from core.server import create_server
@@ -227,7 +224,6 @@ class TestTarGzManager(unittest.TestCase):
         )
         self.assertTrue(self.sample_app_dir.exists())
     def test_scanner_auto_resolve_and_discovery(self):
-        from targz_manager.scanner import SystemScanner
         from core.scanner import SystemScanner
         scanner = SystemScanner(self.db, self.installer)
 
@@ -311,7 +307,6 @@ class TestHttpServerApi(unittest.TestCase):
         except urllib.error.HTTPError as e:
             self.assertEqual(e.code, 403)
 
-    @mock.patch("targz_manager.server.subprocess.run")
     @mock.patch("core.server.subprocess.run")
     def test_self_update_api(self, mock_run):
         mock_proc = mock.MagicMock()
@@ -343,7 +338,6 @@ class TestHttpServerApi(unittest.TestCase):
 
 
     def test_watchdog_disconnect_grace_and_cancel(self):
-        from targz_manager.server import ThreadedHTTPServer
         from core.server import ThreadedHTTPServer
         srv = ThreadedHTTPServer(("127.0.0.1", 0), lambda *args: None, auto_shutdown=False, shutdown_timeout=1.0, disconnect_grace=0.4)
         try:

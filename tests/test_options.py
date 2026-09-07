@@ -4,10 +4,6 @@ import shutil
 import unittest
 import urllib.request
 from pathlib import Path
-
-from targz_manager.db import Database, DEFAULT_OPTIONS
-from targz_manager.installer import Installer
-from targz_manager.server import create_server
 from core.db import Database, DEFAULT_OPTIONS
 from core.installer import Installer
 from core.server import create_server

@@ -12,6 +12,7 @@ class ClinuxApp {
     this.currentTab = 'dashboard';
     this.currentSort = 'name_asc';
     this.searchQuery = '';
+    this.bannerDismissed = false;
 
     // Selected Navigation Index for Keyboard Navigation
     this.selectedNavIdx = 0;
@@ -322,6 +323,9 @@ class ClinuxApp {
 
     if (available.length > 0) {
       if (banner) banner.style.display = 'block';
+      // Never show unmanaged apps banner on dotfiles view or if dismissed
+      const showBanner = this.currentTab !== 'dotfiles' && !this.bannerDismissed;
+      if (banner) banner.style.display = showBanner ? 'block' : 'none';
       if (navItem) navItem.style.display = 'flex';
       if (countPill) countPill.innerText = available.length;
       if (navBadge) navBadge.innerText = available.length;
@@ -343,6 +347,7 @@ class ClinuxApp {
   }
 
   dismissDiscoveredBanner() {
+    this.bannerDismissed = true;
     const banner = document.getElementById('discoveredBanner');
     if (banner) banner.style.display = 'none';
   }
@@ -393,6 +398,8 @@ class ClinuxApp {
       if (views.apps) views.apps.style.display = 'flex';
       this.renderApps();
     }
+
+    this.renderDiscoveredBanner();
   }
 
   setSort(sortVal) {
@@ -1451,17 +1458,10 @@ class ClinuxApp {
   }
 
   // =========================================================================
-  // Dotfiles Manager
-  // =========================================================================
   // Dotfiles Manager (GNU Stow & Git Rebuilt)
   // =========================================================================
-  dotfilesFilter: 'all',
-  dotfilesSearch: '',
-  expandedPkgFiles: {},
-
   async fetchDotfilesStatus(showToast = false) {
     try {
-      const res = await fetch('/api/dotfiles/status');
       const input = document.getElementById('dotfilesRepoInput');
       const customPath = input && input.value.trim() ? input.value.trim() : '';
       const url = customPath ? `/api/dotfiles/status?path=${encodeURIComponent(customPath)}` : '/api/dotfiles/status';
@@ -1472,28 +1472,19 @@ class ClinuxApp {
         this.renderDotfiles();
         if (showToast) this.toast('Dotfiles refreshed', 'success');
       }
-    } catch (e) {}
-  }
     } catch (e) {
       if (showToast) this.toast(`Refresh failed: ${e.message}`, 'error');
     }
-  },
+  }
 
-  renderDotfiles() {
-    const d = this.dotfilesData;
-    if (!d) return;
   browseDotfilesDir() {
     this.openFileBrowser('dir', 'dotfilesRepoInput', (selected) => {
       if (selected) {
         this.saveDotfilesPath(selected);
       }
     });
-  },
+  }
 
-    const heroTitle = document.getElementById('dotfilesHeroTitle');
-    const branch = document.getElementById('dotfilesBranch');
-    const gitState = document.getElementById('dotfilesGitState');
-    const pkgsList = document.getElementById('dotfilesPackagesList');
   async saveDotfilesPath(explicitPath = null) {
     const input = document.getElementById('dotfilesRepoInput');
     const path = explicitPath || (input ? input.value.trim() : '');
@@ -1502,12 +1493,6 @@ class ClinuxApp {
       return;
     }
 
-    if (heroTitle) heroTitle.textContent = d.repo_path || '~/.dotfiles';
-    if (d.git && d.git.is_git) {
-      if (branch) branch.textContent = d.git.branch || 'main';
-      if (gitState) {
-        gitState.textContent = d.git.clean ? 'clean' : `${d.git.modified_files} modified`;
-        gitState.style.color = d.git.clean ? 'var(--c-terminal-green-bright)' : 'var(--c-warning-yellow)';
     try {
       const res = await fetch('/api/dotfiles/config', {
         method: 'POST',
@@ -1524,21 +1509,8 @@ class ClinuxApp {
     } catch (e) {
       this.toast(`Failed to save path: ${e.message}`, 'error');
     }
-  },
+  }
 
-    if (pkgsList && d.packages) {
-      pkgsList.innerHTML = d.packages.map(p => {
-        const name = typeof p === 'object' ? p.name : p;
-        const stowed = typeof p === 'object' ? p.stowed : false;
-        return `
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 6px; background:var(--c-near-black); border:1px solid var(--c-shadow);">
-            <span>${this.escapeHtml(name)} <small style="color:${stowed ? 'var(--c-terminal-green-bright)' : 'var(--text-muted)'};">[${stowed ? 'STOWED' : 'NOT STOWED'}]</small></span>
-            <button class="retro-btn" onclick="app.runDotfilesCommand('${stowed ? 'unstow' : 'stow'}', null, '${this.escapeHtml(name)}')">
-              ${stowed ? 'Unstow' : 'Stow'}
-            </button>
-          </div>
-        `;
-      }).join('');
   getStowFlags() {
     return {
       simulate: !!document.getElementById('chkStowSimulate')?.checked,
@@ -1546,7 +1518,7 @@ class ClinuxApp {
       no_folding: !!document.getElementById('chkStowNoFolding')?.checked,
       dotfiles_flag: !!document.getElementById('chkStowDotfilesFlag')?.checked
     };
-  },
+  }
 
   async runStow(action, packageName = null, customFlags = {}) {
     const consoleElem = document.getElementById('dotfilesOutputConsole');
@@ -1559,13 +1531,11 @@ class ClinuxApp {
       badgeElem.textContent = 'Running...';
       badgeElem.style.color = 'var(--c-warning-yellow)';
     }
-  }
     if (consoleElem) {
       const header = `\n>>> [STOW ${action.toUpperCase()}] Target: ${targetLabel} | Flags: ${JSON.stringify(flags)}\n`;
       consoleElem.textContent = header;
     }
 
-  async runDotfilesCommand(command, message = null, packageName = null) {
     try {
       const res = await fetch('/api/dotfiles/stow', {
         method: 'POST',
@@ -1598,7 +1568,7 @@ class ClinuxApp {
       }
       this.toast(`Error: ${e.message}`, 'error');
     }
-  },
+  }
 
   async runGit(action) {
     const consoleElem = document.getElementById('dotfilesOutputConsole');
@@ -1606,8 +1576,6 @@ class ClinuxApp {
     const msgInput = document.getElementById('dotfilesCommitMsg');
     const chkForce = document.getElementById('chkGitForce');
 
-    if (badgeElem) badgeElem.textContent = 'Running...';
-    if (consoleElem) consoleElem.textContent = `--> dotfiles ${command}...\n`;
     const message = msgInput ? msgInput.value.trim() : '';
     const force = !!(chkForce && chkForce.checked);
 
@@ -1615,6 +1583,12 @@ class ClinuxApp {
       this.toast('Commit message required', 'warn');
       if (msgInput) msgInput.focus();
       return;
+    }
+
+    if (action === 'pull_overwrite' || action === 'force_pull') {
+      if (!confirm('WARNING: Force Pull & Overwrite will discard all local changes and reset your dotfiles repository to match remote exactly. Proceed?')) {
+        return;
+      }
     }
 
     if (badgeElem) {
@@ -1626,16 +1600,12 @@ class ClinuxApp {
     }
 
     try {
-      const res = await fetch('/api/dotfiles/run', {
       const res = await fetch('/api/dotfiles/git', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command, message, package: packageName })
         body: JSON.stringify({ action, message, force })
       });
       const data = await res.json();
-      if (consoleElem) consoleElem.textContent = data.output || (data.success ? 'Completed.' : 'Failed.');
-      if (badgeElem) badgeElem.textContent = data.success ? 'Success' : 'Failed';
 
       const logText = (data.command ? `CMD: ${data.command}\n\n` : '') +
                       (data.output || (data.success ? 'Success.' : 'Failed.')) +
@@ -1654,7 +1624,6 @@ class ClinuxApp {
       this.toast(`Git ${action}: ${data.success ? 'Done' : 'Error'}`, data.success ? 'success' : 'error');
       await this.fetchDotfilesStatus(false);
     } catch (e) {
-      if (consoleElem) consoleElem.textContent = `Error: ${e.message}`;
       if (consoleElem) consoleElem.textContent = `Git error: ${e.message}`;
       if (badgeElem) {
         badgeElem.textContent = 'Error';
@@ -1663,7 +1632,6 @@ class ClinuxApp {
       this.toast(`Git error: ${e.message}`, 'error');
     }
   }
-  },
 
   async runDotfilesCommand(command, message = null, packageName = null) {
     if (command === 'stow' || command === 'unstow' || command === 'restow') {
@@ -1684,15 +1652,17 @@ class ClinuxApp {
       return this.runGit('pull');
     }
     return this.runGit(command);
-  },
+  }
 
   saveDotfiles() {
     const input = document.getElementById('dotfilesCommitMsg');
     const msg = input ? input.value.trim() : '';
     if (!msg) {
       this.toast('Enter commit message', 'info');
+      return;
+    }
     this.runGit('commit_push');
-  },
+  }
 
   clearDotfilesConsole() {
     const consoleElem = document.getElementById('dotfilesOutputConsole');
@@ -1702,23 +1672,23 @@ class ClinuxApp {
       badgeElem.textContent = 'Ready';
       badgeElem.style.color = 'var(--c-terminal-green)';
     }
-  },
+  }
 
   setDotfilesFilter(filter) {
     this.dotfilesFilter = filter;
     this.renderDotfiles();
-  },
+  }
 
   filterDotfilesPackages() {
     const searchInput = document.getElementById('dotfilesPkgSearch');
     this.dotfilesSearch = searchInput ? searchInput.value.toLowerCase().trim() : '';
     this.renderDotfiles();
-  },
+  }
 
   togglePkgFiles(pkgName) {
     this.expandedPkgFiles[pkgName] = !this.expandedPkgFiles[pkgName];
     this.renderDotfiles();
-  },
+  }
 
   renderDotfiles() {
     const d = this.dotfilesData;
@@ -1803,9 +1773,6 @@ class ClinuxApp {
       pkgsList.innerHTML = `<div style="padding:12px; color:var(--c-alert-red); text-align:center;">Directory ${this.escapeHtml(d.repo_path)} does not exist. Set valid path above.</div>`;
       return;
     }
-    this.runDotfilesCommand('save', msg);
-    if (input) input.value = '';
-  }
 
     if (packages.length === 0) {
       pkgsList.innerHTML = `<div style="padding:12px; color:var(--text-muted); text-align:center;">No stow packages found in ${this.escapeHtml(d.repo_path)}.<br><small>Create subdirectories (e.g. zsh, nvim, tmux) to manage them with Stow.</small></div>`;
@@ -1836,17 +1803,15 @@ class ClinuxApp {
       const status = p.status || (p.stowed ? 'stowed' : 'unstowed');
       const isExpanded = !!this.expandedPkgFiles[name];
 
-      let badgeColor = 'var(--text-muted)';
-      let badgeLabel = 'UNSTOWED';
+      let badgeHtml = '';
       if (status === 'stowed') {
-        badgeColor = 'var(--c-terminal-green-bright)';
-        badgeLabel = 'STOWED';
+        badgeHtml = `<span style="font-size:10px; font-weight:bold; padding:2px 6px; border:1px solid var(--c-terminal-green-bright); background:rgba(104,189,130,0.15); color:var(--c-terminal-green-bright);">● STOWED</span>`;
       } else if (status === 'partial') {
-        badgeColor = 'var(--c-warning-yellow)';
-        badgeLabel = `PARTIAL (${p.stowed_files}/${p.total_files})`;
+        badgeHtml = `<span style="font-size:10px; font-weight:bold; padding:2px 6px; border:1px solid var(--c-warning-yellow); background:rgba(255,208,0,0.15); color:var(--c-warning-yellow);">▲ PARTIAL (${p.stowed_files}/${p.total_files})</span>`;
       } else if (status === 'empty') {
-        badgeColor = 'var(--text-muted)';
-        badgeLabel = 'EMPTY';
+        badgeHtml = `<span style="font-size:10px; color:var(--text-muted); padding:2px 6px; border:1px solid var(--c-shadow);">EMPTY</span>`;
+      } else {
+        badgeHtml = `<span style="font-size:10px; font-weight:bold; padding:2px 6px; border:1px solid var(--text-muted); background:rgba(120,120,120,0.12); color:var(--text-muted);">○ UNSTOWED</span>`;
       }
 
       let filesHtml = '';
@@ -1868,23 +1833,23 @@ class ClinuxApp {
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <strong style="color:var(--c-warm-beige); font-size:12px;">${this.escapeHtml(name)}</strong>
-              <span style="font-size:10px; color:${badgeColor}; font-weight:bold;">[${badgeLabel}]</span>
+              ${badgeHtml}
               ${p.total_files !== undefined ? `<small style="color:var(--text-muted); font-size:10px;">${p.total_files} files</small>` : ''}
             </div>
             <div style="display:flex; gap:4px; align-items:center;">
-              <button class="retro-btn ${status === 'stowed' ? '' : 'retro-btn-green'}" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('stow', '${this.escapeHtml(name)}')">Stow</button>
-              <button class="retro-btn" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('restow', '${this.escapeHtml(name)}')">Restow</button>
-              <button class="retro-btn ${status === 'stowed' ? 'retro-btn-warn' : ''}" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('unstow', '${this.escapeHtml(name)}')">Unstow</button>
-              <button class="retro-btn" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('stow', '${this.escapeHtml(name)}', {adopt:true})">Adopt</button>
-              <button class="retro-btn" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('stow', '${this.escapeHtml(name)}', {simulate:true})">Test</button>
-              <button class="retro-btn" style="padding:1px 4px; font-size:10px;" onclick="app.togglePkgFiles('${this.escapeHtml(name)}')">${isExpanded ? '▲' : '▼'}</button>
+              <button class="retro-btn" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('stow', '${this.escapeHtml(name)}')" title="STOW&#10;• WHAT IT DOES: Symlinks package files into target (~).&#10;• WHEN TO USE: Activate this configuration on your system.">Stow</button>
+              <button class="retro-btn" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('restow', '${this.escapeHtml(name)}')" title="RESTOW&#10;• WHAT IT DOES: Cleans dead links and relinks package.&#10;• WHEN TO USE: After adding, renaming, or deleting files in this package.">Restow</button>
+              <button class="retro-btn" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('unstow', '${this.escapeHtml(name)}')" title="UNSTOW&#10;• WHAT IT DOES: Removes all symlinks for this package.&#10;• WHEN TO USE: Temporarily or permanently deactivate this package.">Unstow</button>
+              <button class="retro-btn" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('stow', '${this.escapeHtml(name)}', {adopt:true})" title="ADOPT&#10;• WHAT IT DOES: Imports existing target files into package, overwriting repo file.&#10;• WHEN TO USE: When configuration already exists on disk and you want to import it into dotfiles.">Adopt</button>
+              <button class="retro-btn" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('stow', '${this.escapeHtml(name)}', {simulate:true})" title="TEST (DRY RUN)&#10;• WHAT IT DOES: Simulates stowing without touching disk.&#10;• WHEN TO USE: Check for potential conflicts before linking.">Test</button>
+              <button class="retro-btn" style="padding:1px 4px; font-size:10px;" onclick="app.togglePkgFiles('${this.escapeHtml(name)}')" title="${isExpanded ? 'Hide' : 'Show'} package file list">${isExpanded ? '▲' : '▼'}</button>
             </div>
           </div>
           ${filesHtml}
         </div>
       `;
     }).join('');
-  },
+  }
 
   // =========================================================================
   // Self Update
