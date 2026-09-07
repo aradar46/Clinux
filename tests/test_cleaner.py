@@ -6,10 +6,10 @@ from pathlib import Path
 import urllib.request
 import json
 
-from targz_manager.cleaner import SystemCleaner
-from targz_manager.db import Database
-from targz_manager.installer import Installer
-from targz_manager.server import create_server
+from core.cleaner import SystemCleaner
+from core.db import Database
+from core.installer import Installer
+from core.server import create_server
 
 
 class TestSystemCleaner(unittest.TestCase):
@@ -115,7 +115,7 @@ class TestSystemCleaner(unittest.TestCase):
         self.assertEqual(len(list(self.mock_yay.iterdir())), 0)
         self.assertEqual(len(list(self.mock_pip.iterdir())), 0)
 
-    @mock.patch("targz_manager.cleaner.subprocess.run")
+    @mock.patch("core.cleaner.subprocess.run")
     def test_interactive_clean_no_shell_true(self, mock_run):
         mock_run.return_value = mock.MagicMock(returncode=0)
         sudo_dir = self.base_path / "sudo_dir"
@@ -144,7 +144,7 @@ class TestSystemCleaner(unittest.TestCase):
         self.assertIsInstance(cmd_arg, list)
         self.assertEqual(cmd_arg[0], "sudo")
 
-    @mock.patch("targz_manager.cleaner.subprocess.run")
+    @mock.patch("core.cleaner.subprocess.run")
     def test_interactive_clean_path_injection_quoted(self, mock_run):
         mock_run.return_value = mock.MagicMock(returncode=0)
         malicious_dir = self.base_path / "cache; echo injected"

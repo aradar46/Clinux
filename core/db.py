@@ -54,6 +54,10 @@ DEFAULT_OPTIONS = {
     },
     "ai": {
         "skills_root": ""
+    },
+    "dotfiles": {
+        "repo_path": str(Path.home() / ".dotfiles"),
+        "target_dir": str(Path.home())
     }
 }
 

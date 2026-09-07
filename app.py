@@ -16,14 +16,14 @@ from pathlib import Path
 # Ensure repo root is on sys.path
 sys.path.insert(0, str(Path(__file__).parent.resolve()))
 
-from targz_manager.db import Database
-from targz_manager.installer import (
+from core.db import Database
+from core.installer import (
     Installer,
     DEFAULT_OPT_DIR,
     DEFAULT_BIN_DIR,
     DEFAULT_DESKTOP_DIR
 )
-from targz_manager.server import create_server
+from core.server import create_server
 
 
 def find_free_port(start_port: int = 8421) -> int:
@@ -60,7 +60,7 @@ def open_browser_tab(url: str):
 def install_desktop_shortcut_for_manager():
     """Install .desktop file for Clinux into ~/.local/share/applications"""
     script_path = Path(__file__).resolve()
-    icon_path = script_path.parent / "targz_manager" / "static" / "icon.png"
+    icon_path = script_path.parent / "core" / "static" / "icon.png"
     desktop_file = DEFAULT_DESKTOP_DIR / "clinux.desktop"
 
     content = [

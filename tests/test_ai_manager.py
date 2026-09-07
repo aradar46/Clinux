@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from targz_manager.ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
+from core.ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
 
 
 class TestAIManager(unittest.TestCase):
@@ -172,9 +172,9 @@ class TestAIStorageManager(unittest.TestCase):
 class TestAIApi(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from targz_manager.db import Database
-        from targz_manager.installer import Installer
-        from targz_manager.server import create_server
+        from core.db import Database
+        from core.installer import Installer
+        from core.server import create_server
         import threading
 
         cls.temp_dir = tempfile.TemporaryDirectory()

@@ -107,6 +107,7 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         self.skill_manager = SkillManager(skills_root=Path(skills_root)) if skills_root else SkillManager()
         self.ai_storage = AIStorageManager()
         self.dotfiles_manager = DotfilesManager()
+        self.dotfiles_manager = DotfilesManager(db=self.db)
         super().__init__(*args, **kwargs)
 
     def log_message(self, format, *args):
@@ -198,6 +199,7 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._handle_api_ai_status()
         elif path == '/api/dotfiles/status':
             self._handle_api_dotfiles_status()
+            self._handle_api_dotfiles_status(query)
         elif path == '/api/browse':
             self._handle_browse(query)
         else:
@@ -297,7 +299,11 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         results = AIRuntimeDetector.get_runtime_status()
         self._send_json(results)
 
-    def _handle_api_dotfiles_status(self):
+    def _handle_api_dotfiles_status(self, query: Optional[Dict[str, list]] = None):
+        if query and 'path' in query and query['path']:
+            custom_path = query['path'][0]
+            if custom_path:
+                self.dotfiles_manager.set_paths(repo_dir=custom_path, persist=False)
         results = self.dotfiles_manager.get_status()
         self._send_json(results)
 
@@ -447,8 +453,8 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._handle_post_ai(path, body)
         elif path == '/api/cleaner/clean':
             self._handle_post_cleaner(body)
-        elif path == '/api/dotfiles/run':
-            self._handle_post_dotfiles(body)
+        elif path.startswith('/api/dotfiles'):
+            self._handle_post_dotfiles(path, body)
         else:
             self._send_error_json("Endpoint not found", status=404)
 
@@ -618,6 +624,51 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             return
         res = self.dotfiles_manager.run_command(cmd_name, message=msg, package=pkg)
         self._send_json(res)
+    def _handle_post_dotfiles(self, path: str, body: Dict[str, Any]):
+        if path == '/api/dotfiles/config':
+            repo_path = body.get('repo_path')
+            target_dir = body.get('target_dir')
+            persist = body.get('persist', True)
+            res = self.dotfiles_manager.set_paths(repo_dir=repo_path, target_dir=target_dir, persist=persist)
+            self._send_json(res)
+        elif path == '/api/dotfiles/stow':
+            action = body.get('action', 'stow')
+            pkg = body.get('package')
+            sim = bool(body.get('simulate', False))
+            adopt = bool(body.get('adopt', False))
+            no_folding = bool(body.get('no_folding', False))
+            dotfiles_flag = bool(body.get('dotfiles_flag', False))
+            override = body.get('override')
+            target_dir = body.get('target_dir')
+            res = self.dotfiles_manager.run_stow(
+                action=action,
+                package=pkg,
+                simulate=sim,
+                adopt=adopt,
+                no_folding=no_folding,
+                override=override,
+                dotfiles_flag=dotfiles_flag,
+                target_dir=target_dir,
+            )
+            self._send_json(res)
+        elif path == '/api/dotfiles/git':
+            action = body.get('action', 'status')
+            msg = body.get('message')
+            force = bool(body.get('force', False))
+            res = self.dotfiles_manager.run_git(action, message=msg, force=force)
+            self._send_json(res)
+        elif path == '/api/dotfiles/run':
+            cmd_name = body.get('command')
+            msg = body.get('message')
+            pkg = body.get('package')
+            force = bool(body.get('force', False))
+            if not cmd_name:
+                self._send_error_json("command is required", status=400)
+                return
+            res = self.dotfiles_manager.run_command(cmd_name, message=msg, package=pkg, force=force)
+            self._send_json(res)
+        else:
+            self._send_error_json(f"Unknown endpoint '{path}'", status=404)
 
     def _handle_post_apps(self, path: str, body: Dict[str, Any]):
         if path == '/api/apps/inspect':

@@ -46,7 +46,11 @@ class ClinuxApp {
     this.browserTargetInputId = null;
     this.browserOnSelectCallback = null;
     this.browserCurrentPath = '';
-    this.browserSelectedItem = null;
+    // Dotfiles State
+    this.dotfilesData = null;
+    this.dotfilesFilter = 'all';
+    this.dotfilesSearch = '';
+    this.expandedPkgFiles = {};
 
     this.init();
   }
@@ -1449,9 +1453,19 @@ class ClinuxApp {
   // =========================================================================
   // Dotfiles Manager
   // =========================================================================
+  // Dotfiles Manager (GNU Stow & Git Rebuilt)
+  // =========================================================================
+  dotfilesFilter: 'all',
+  dotfilesSearch: '',
+  expandedPkgFiles: {},
+
   async fetchDotfilesStatus(showToast = false) {
     try {
       const res = await fetch('/api/dotfiles/status');
+      const input = document.getElementById('dotfilesRepoInput');
+      const customPath = input && input.value.trim() ? input.value.trim() : '';
+      const url = customPath ? `/api/dotfiles/status?path=${encodeURIComponent(customPath)}` : '/api/dotfiles/status';
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         this.dotfilesData = data;
@@ -1460,15 +1474,33 @@ class ClinuxApp {
       }
     } catch (e) {}
   }
+    } catch (e) {
+      if (showToast) this.toast(`Refresh failed: ${e.message}`, 'error');
+    }
+  },
 
   renderDotfiles() {
     const d = this.dotfilesData;
     if (!d) return;
+  browseDotfilesDir() {
+    this.openFileBrowser('dir', 'dotfilesRepoInput', (selected) => {
+      if (selected) {
+        this.saveDotfilesPath(selected);
+      }
+    });
+  },
 
     const heroTitle = document.getElementById('dotfilesHeroTitle');
     const branch = document.getElementById('dotfilesBranch');
     const gitState = document.getElementById('dotfilesGitState');
     const pkgsList = document.getElementById('dotfilesPackagesList');
+  async saveDotfilesPath(explicitPath = null) {
+    const input = document.getElementById('dotfilesRepoInput');
+    const path = explicitPath || (input ? input.value.trim() : '');
+    if (!path) {
+      this.toast('Please enter or select a directory path', 'info');
+      return;
+    }
 
     if (heroTitle) heroTitle.textContent = d.repo_path || '~/.dotfiles';
     if (d.git && d.git.is_git) {
@@ -1476,8 +1508,23 @@ class ClinuxApp {
       if (gitState) {
         gitState.textContent = d.git.clean ? 'clean' : `${d.git.modified_files} modified`;
         gitState.style.color = d.git.clean ? 'var(--c-terminal-green-bright)' : 'var(--c-warning-yellow)';
+    try {
+      const res = await fetch('/api/dotfiles/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo_path: path, persist: true })
+      });
+      const data = await res.json();
+      if (data.success) {
+        this.toast(`Dotfiles path set to ${data.repo_path}`, 'success');
+        await this.fetchDotfilesStatus(false);
+      } else {
+        this.toast(data.error || 'Failed to update dotfiles path', 'error');
       }
+    } catch (e) {
+      this.toast(`Failed to save path: ${e.message}`, 'error');
     }
+  },
 
     if (pkgsList && d.packages) {
       pkgsList.innerHTML = d.packages.map(p => {
@@ -1492,41 +1539,352 @@ class ClinuxApp {
           </div>
         `;
       }).join('');
-    }
-  }
+  getStowFlags() {
+    return {
+      simulate: !!document.getElementById('chkStowSimulate')?.checked,
+      adopt: !!document.getElementById('chkStowAdopt')?.checked,
+      no_folding: !!document.getElementById('chkStowNoFolding')?.checked,
+      dotfiles_flag: !!document.getElementById('chkStowDotfilesFlag')?.checked
+    };
+  },
 
-  async runDotfilesCommand(command, message = null, packageName = null) {
+  async runStow(action, packageName = null, customFlags = {}) {
     const consoleElem = document.getElementById('dotfilesOutputConsole');
     const badgeElem = document.getElementById('dotfilesOutputBadge');
 
+    const flags = Object.assign(this.getStowFlags(), customFlags);
+    const targetLabel = packageName && packageName !== '__all__' ? packageName : 'ALL PACKAGES';
+
+    if (badgeElem) {
+      badgeElem.textContent = 'Running...';
+      badgeElem.style.color = 'var(--c-warning-yellow)';
+    }
+  }
+    if (consoleElem) {
+      const header = `\n>>> [STOW ${action.toUpperCase()}] Target: ${targetLabel} | Flags: ${JSON.stringify(flags)}\n`;
+      consoleElem.textContent = header;
+    }
+
+  async runDotfilesCommand(command, message = null, packageName = null) {
+    try {
+      const res = await fetch('/api/dotfiles/stow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          package: packageName,
+          ...flags
+        })
+      });
+      const data = await res.json();
+
+      const logText = (data.command ? `CMD: ${data.command}\n\n` : '') +
+                      (data.output || (data.success ? 'Success.' : 'Failed.')) +
+                      (data.error ? `\nERROR: ${data.error}` : '');
+
+      if (consoleElem) consoleElem.textContent = logText;
+      if (badgeElem) {
+        badgeElem.textContent = data.success ? 'Success' : 'Failed';
+        badgeElem.style.color = data.success ? 'var(--c-terminal-green-bright)' : 'var(--c-alert-red)';
+      }
+
+      this.toast(`Stow ${action}: ${data.success ? 'Completed' : 'Failed'}`, data.success ? 'success' : 'error');
+      await this.fetchDotfilesStatus(false);
+    } catch (e) {
+      if (consoleElem) consoleElem.textContent = `Error executing stow: ${e.message}`;
+      if (badgeElem) {
+        badgeElem.textContent = 'Error';
+        badgeElem.style.color = 'var(--c-alert-red)';
+      }
+      this.toast(`Error: ${e.message}`, 'error');
+    }
+  },
+
+  async runGit(action) {
+    const consoleElem = document.getElementById('dotfilesOutputConsole');
+    const badgeElem = document.getElementById('dotfilesOutputBadge');
+    const msgInput = document.getElementById('dotfilesCommitMsg');
+    const chkForce = document.getElementById('chkGitForce');
+
     if (badgeElem) badgeElem.textContent = 'Running...';
     if (consoleElem) consoleElem.textContent = `--> dotfiles ${command}...\n`;
+    const message = msgInput ? msgInput.value.trim() : '';
+    const force = !!(chkForce && chkForce.checked);
+
+    if ((action === 'commit' || action === 'commit_push') && !message) {
+      this.toast('Commit message required', 'warn');
+      if (msgInput) msgInput.focus();
+      return;
+    }
+
+    if (badgeElem) {
+      badgeElem.textContent = 'Git ' + action + '...';
+      badgeElem.style.color = 'var(--c-warning-yellow)';
+    }
+    if (consoleElem) {
+      consoleElem.textContent = `\n>>> [GIT ${action.toUpperCase()}] Force: ${force}\n`;
+    }
 
     try {
       const res = await fetch('/api/dotfiles/run', {
+      const res = await fetch('/api/dotfiles/git', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command, message, package: packageName })
+        body: JSON.stringify({ action, message, force })
       });
       const data = await res.json();
       if (consoleElem) consoleElem.textContent = data.output || (data.success ? 'Completed.' : 'Failed.');
       if (badgeElem) badgeElem.textContent = data.success ? 'Success' : 'Failed';
+
+      const logText = (data.command ? `CMD: ${data.command}\n\n` : '') +
+                      (data.output || (data.success ? 'Success.' : 'Failed.')) +
+                      (data.error ? `\nERROR: ${data.error}` : '');
+
+      if (consoleElem) consoleElem.textContent = logText;
+      if (badgeElem) {
+        badgeElem.textContent = data.success ? 'Success' : 'Failed';
+        badgeElem.style.color = data.success ? 'var(--c-terminal-green-bright)' : 'var(--c-alert-red)';
+      }
+
+      if (data.success && (action === 'commit' || action === 'commit_push')) {
+        if (msgInput) msgInput.value = '';
+      }
+
+      this.toast(`Git ${action}: ${data.success ? 'Done' : 'Error'}`, data.success ? 'success' : 'error');
       await this.fetchDotfilesStatus(false);
     } catch (e) {
       if (consoleElem) consoleElem.textContent = `Error: ${e.message}`;
+      if (consoleElem) consoleElem.textContent = `Git error: ${e.message}`;
+      if (badgeElem) {
+        badgeElem.textContent = 'Error';
+        badgeElem.style.color = 'var(--c-alert-red)';
+      }
+      this.toast(`Git error: ${e.message}`, 'error');
     }
   }
+  },
+
+  async runDotfilesCommand(command, message = null, packageName = null) {
+    if (command === 'stow' || command === 'unstow' || command === 'restow') {
+      return this.runStow(command, packageName);
+    }
+    if (command === 'check') {
+      return this.runStow('stow', packageName, { simulate: true });
+    }
+    if (command === 'apply') {
+      return this.runStow('stow', packageName);
+    }
+    if (command === 'save') {
+      const msgInput = document.getElementById('dotfilesCommitMsg');
+      if (message && msgInput) msgInput.value = message;
+      return this.runGit('commit_push');
+    }
+    if (command === 'update') {
+      return this.runGit('pull');
+    }
+    return this.runGit(command);
+  },
 
   saveDotfiles() {
     const input = document.getElementById('dotfilesCommitMsg');
     const msg = input ? input.value.trim() : '';
     if (!msg) {
       this.toast('Enter commit message', 'info');
+    this.runGit('commit_push');
+  },
+
+  clearDotfilesConsole() {
+    const consoleElem = document.getElementById('dotfilesOutputConsole');
+    const badgeElem = document.getElementById('dotfilesOutputBadge');
+    if (consoleElem) consoleElem.textContent = 'Ready.';
+    if (badgeElem) {
+      badgeElem.textContent = 'Ready';
+      badgeElem.style.color = 'var(--c-terminal-green)';
+    }
+  },
+
+  setDotfilesFilter(filter) {
+    this.dotfilesFilter = filter;
+    this.renderDotfiles();
+  },
+
+  filterDotfilesPackages() {
+    const searchInput = document.getElementById('dotfilesPkgSearch');
+    this.dotfilesSearch = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    this.renderDotfiles();
+  },
+
+  togglePkgFiles(pkgName) {
+    this.expandedPkgFiles[pkgName] = !this.expandedPkgFiles[pkgName];
+    this.renderDotfiles();
+  },
+
+  renderDotfiles() {
+    const d = this.dotfilesData;
+    if (!d) return;
+
+    const repoInput = document.getElementById('dotfilesRepoInput');
+    const targetSpan = document.getElementById('dotfilesTargetDir');
+    const stowBadge = document.getElementById('dotfilesStowBadge');
+    const gitBadge = document.getElementById('dotfilesGitBadge');
+    const heroStatus = document.getElementById('dotfilesHeroStatus');
+
+    // Header updates
+    if (repoInput && (!document.activeElement || document.activeElement !== repoInput)) {
+      repoInput.value = d.repo_path || '';
+    }
+    if (targetSpan) targetSpan.textContent = d.target_dir || '~';
+
+    if (stowBadge) {
+      stowBadge.textContent = d.stow_installed ? 'INSTALLED' : 'NOT FOUND';
+      stowBadge.style.color = d.stow_installed ? 'var(--c-terminal-green-bright)' : 'var(--c-alert-red)';
+    }
+
+    if (heroStatus) {
+      if (!d.exists) {
+        heroStatus.textContent = 'Directory Not Found';
+        heroStatus.style.color = 'var(--c-alert-red)';
+      } else {
+        heroStatus.textContent = 'Ready';
+        heroStatus.style.color = 'var(--c-terminal-green-bright)';
+      }
+    }
+
+    // Git Status Panel
+    const git = d.git || {};
+    const branchElem = document.getElementById('dotfilesGitBranch');
+    const aheadElem = document.getElementById('dotfilesGitAhead');
+    const behindElem = document.getElementById('dotfilesGitBehind');
+    const modElem = document.getElementById('dotfilesGitModified');
+    const untrackedElem = document.getElementById('dotfilesGitUntracked');
+    const lastCommitElem = document.getElementById('dotfilesGitLastCommit');
+
+    if (gitBadge) {
+      if (!git.is_git) {
+        gitBadge.textContent = 'NO GIT';
+        gitBadge.style.color = 'var(--text-muted)';
+      } else if (git.clean) {
+        gitBadge.textContent = 'CLEAN';
+        gitBadge.style.color = 'var(--c-terminal-green-bright)';
+      } else {
+        const total = (git.modified_files || 0) + (git.untracked_files || 0);
+        gitBadge.textContent = `${total} CHANGED`;
+        gitBadge.style.color = 'var(--c-warning-yellow)';
+      }
+    }
+
+    if (branchElem) branchElem.textContent = git.branch || (git.is_git ? 'detached' : 'None');
+    if (aheadElem) aheadElem.textContent = git.ahead || 0;
+    if (behindElem) behindElem.textContent = git.behind || 0;
+    if (modElem) modElem.textContent = git.modified_files || 0;
+    if (untrackedElem) untrackedElem.textContent = git.untracked_files || 0;
+    if (lastCommitElem) {
+      lastCommitElem.textContent = git.last_commit ? `Last: ${git.last_commit}` : (git.is_git ? 'No commits' : 'Not a Git repo');
+    }
+
+    // Packages List
+    const pkgsList = document.getElementById('dotfilesPackagesList');
+    const pkgCount = document.getElementById('dotfilesPkgCount');
+    const stowedSummary = document.getElementById('dotfilesStowedSummary');
+
+    const packages = d.packages || [];
+    if (pkgCount) pkgCount.textContent = packages.length;
+
+    let stowedCount = 0;
+    packages.forEach(p => {
+      if (p.stowed || p.status === 'stowed') stowedCount++;
+    });
+    if (stowedSummary) stowedSummary.textContent = `${stowedCount}/${packages.length} Stowed`;
+
+    if (!pkgsList) return;
+
+    if (!d.exists) {
+      pkgsList.innerHTML = `<div style="padding:12px; color:var(--c-alert-red); text-align:center;">Directory ${this.escapeHtml(d.repo_path)} does not exist. Set valid path above.</div>`;
       return;
     }
     this.runDotfilesCommand('save', msg);
     if (input) input.value = '';
   }
+
+    if (packages.length === 0) {
+      pkgsList.innerHTML = `<div style="padding:12px; color:var(--text-muted); text-align:center;">No stow packages found in ${this.escapeHtml(d.repo_path)}.<br><small>Create subdirectories (e.g. zsh, nvim, tmux) to manage them with Stow.</small></div>`;
+      return;
+    }
+
+    const filtered = packages.filter(p => {
+      const name = p.name || '';
+      if (this.dotfilesSearch && !name.toLowerCase().includes(this.dotfilesSearch)) {
+        return false;
+      }
+      if (this.dotfilesFilter === 'stowed' && !(p.stowed || p.status === 'stowed')) {
+        return false;
+      }
+      if (this.dotfilesFilter === 'unstowed' && (p.stowed || p.status === 'stowed')) {
+        return false;
+      }
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      pkgsList.innerHTML = `<div style="padding:8px; color:var(--text-muted); text-align:center;">No packages match filter "${this.escapeHtml(this.dotfilesSearch || this.dotfilesFilter)}".</div>`;
+      return;
+    }
+
+    pkgsList.innerHTML = filtered.map(p => {
+      const name = p.name;
+      const status = p.status || (p.stowed ? 'stowed' : 'unstowed');
+      const isExpanded = !!this.expandedPkgFiles[name];
+
+      let badgeColor = 'var(--text-muted)';
+      let badgeLabel = 'UNSTOWED';
+      if (status === 'stowed') {
+        badgeColor = 'var(--c-terminal-green-bright)';
+        badgeLabel = 'STOWED';
+      } else if (status === 'partial') {
+        badgeColor = 'var(--c-warning-yellow)';
+        badgeLabel = `PARTIAL (${p.stowed_files}/${p.total_files})`;
+      } else if (status === 'empty') {
+        badgeColor = 'var(--text-muted)';
+        badgeLabel = 'EMPTY';
+      }
+
+      let filesHtml = '';
+      if (isExpanded && p.files && p.files.length > 0) {
+        filesHtml = `
+          <div style="border-top:1px dashed var(--c-shadow); margin-top:6px; padding-top:4px; font-size:10px; font-family:monospace; max-height:120px; overflow-y:auto;">
+            ${p.files.map(f => `
+              <div style="display:flex; justify-content:space-between; gap:6px; padding:1px 0;">
+                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.escapeHtml(f.path)}</span>
+                <span style="color:${f.stowed ? 'var(--c-terminal-green-bright)' : 'var(--text-muted)'};">${f.stowed ? '[✓]' : '[x]'}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      return `
+        <div style="background:var(--c-near-black); border:1px solid var(--c-shadow); padding:6px 8px; display:flex; flex-direction:column; gap:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <strong style="color:var(--c-warm-beige); font-size:12px;">${this.escapeHtml(name)}</strong>
+              <span style="font-size:10px; color:${badgeColor}; font-weight:bold;">[${badgeLabel}]</span>
+              ${p.total_files !== undefined ? `<small style="color:var(--text-muted); font-size:10px;">${p.total_files} files</small>` : ''}
+            </div>
+            <div style="display:flex; gap:4px; align-items:center;">
+              <button class="retro-btn ${status === 'stowed' ? '' : 'retro-btn-green'}" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('stow', '${this.escapeHtml(name)}')">Stow</button>
+              <button class="retro-btn" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('restow', '${this.escapeHtml(name)}')">Restow</button>
+              <button class="retro-btn ${status === 'stowed' ? 'retro-btn-warn' : ''}" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('unstow', '${this.escapeHtml(name)}')">Unstow</button>
+              <button class="retro-btn" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('stow', '${this.escapeHtml(name)}', {adopt:true})">Adopt</button>
+              <button class="retro-btn" style="padding:1px 6px; font-size:10px;" onclick="app.runStow('stow', '${this.escapeHtml(name)}', {simulate:true})">Test</button>
+              <button class="retro-btn" style="padding:1px 4px; font-size:10px;" onclick="app.togglePkgFiles('${this.escapeHtml(name)}')">${isExpanded ? '▲' : '▼'}</button>
+            </div>
+          </div>
+          ${filesHtml}
+        </div>
+      `;
+    }).join('');
+  },
 
   // =========================================================================
   // Self Update

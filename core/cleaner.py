@@ -80,46 +80,192 @@ class SystemCleaner:
             "sudo_command": "sudo dnf clean all",
             "default_checked": False,
         },
+        # Miniforge
         {
             "id": "miniforge_pkgs",
-            "name": "Miniforge Package Tarballs",
+            "name": "Miniforge Package Cache",
             "category": "package_managers",
             "path": Path.home() / "miniforge3" / "pkgs",
-            "description": "Downloaded conda package archives (.conda, .tar.bz2). Safe to remove.",
-            "only_extensions": (".tar.bz2", ".conda", ".tmp"),
+            "description": "Downloaded conda package archives, unused packages, and index cache in Miniforge.",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
             "safe_to_clean": True,
             "needs_sudo": False,
             "default_checked": True,
         },
+        {
+            "id": "miniforge_pkgs_alt",
+            "name": "Miniforge Package Cache",
+            "category": "package_managers",
+            "path": Path.home() / "miniforge" / "pkgs",
+            "description": "Downloaded conda package archives, unused packages, and index cache in Miniforge.",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
+            "safe_to_clean": True,
+            "needs_sudo": False,
+            "default_checked": True,
+        },
+        # Miniconda
         {
             "id": "miniconda_pkgs",
-            "name": "Miniconda Package Tarballs",
+            "name": "Miniconda Package Cache",
             "category": "package_managers",
             "path": Path.home() / "miniconda3" / "pkgs",
-            "description": "Downloaded conda package archives (.conda, .tar.bz2). Safe to remove.",
-            "only_extensions": (".tar.bz2", ".conda", ".tmp"),
+            "description": "Downloaded conda package archives, unused packages, and index cache in Miniconda.",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
             "safe_to_clean": True,
             "needs_sudo": False,
             "default_checked": True,
         },
         {
+            "id": "miniconda_pkgs_alt",
+            "name": "Miniconda Package Cache",
+            "category": "package_managers",
+            "path": Path.home() / "miniconda" / "pkgs",
+            "description": "Downloaded conda package archives, unused packages, and index cache in Miniconda.",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
+            "safe_to_clean": True,
+            "needs_sudo": False,
+            "default_checked": True,
+        },
+        # Mambaforge
+        {
+            "id": "mambaforge_pkgs",
+            "name": "Mambaforge Package Cache",
+            "category": "package_managers",
+            "path": Path.home() / "mambaforge" / "pkgs",
+            "description": "Downloaded conda package archives, unused packages, and index cache in Mambaforge.",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
+            "safe_to_clean": True,
+            "needs_sudo": False,
+            "default_checked": True,
+        },
+        # Anaconda
+        {
+            "id": "anaconda3_pkgs",
+            "name": "Anaconda Package Cache",
+            "category": "package_managers",
+            "path": Path.home() / "anaconda3" / "pkgs",
+            "description": "Downloaded conda package archives, unused packages, and index cache in Anaconda.",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
+            "safe_to_clean": True,
+            "needs_sudo": False,
+            "default_checked": True,
+        },
+        {
+            "id": "anaconda_pkgs_alt",
+            "name": "Anaconda Package Cache",
+            "category": "package_managers",
+            "path": Path.home() / "anaconda" / "pkgs",
+            "description": "Downloaded conda package archives, unused packages, and index cache in Anaconda.",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
+            "safe_to_clean": True,
+            "needs_sudo": False,
+            "default_checked": True,
+        },
+        # User-level Conda / Mamba / Micromamba package caches
+        {
             "id": "conda_pkgs",
-            "name": "Conda Package Tarballs",
+            "name": "Conda User Package Cache",
             "category": "package_managers",
             "path": Path.home() / ".conda" / "pkgs",
-            "description": "Downloaded conda package archives (.conda, .tar.bz2). Safe to remove.",
-            "only_extensions": (".tar.bz2", ".conda", ".tmp"),
+            "description": "User-level downloaded conda package archives (.conda, .tar.bz2).",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
+            "safe_to_clean": True,
+            "needs_sudo": False,
+            "default_checked": True,
+        },
+        {
+            "id": "mamba_pkgs",
+            "name": "Mamba User Package Cache",
+            "category": "package_managers",
+            "path": Path.home() / ".mamba" / "pkgs",
+            "description": "User-level downloaded mamba package archives (.conda, .tar.bz2).",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
             "safe_to_clean": True,
             "needs_sudo": False,
             "default_checked": True,
         },
         {
             "id": "micromamba_pkgs",
-            "name": "Micromamba Package Tarballs",
+            "name": "Micromamba Package Cache",
             "category": "package_managers",
             "path": Path.home() / ".micromamba" / "pkgs",
-            "description": "Downloaded micromamba package archives (.conda, .tar.bz2). Safe to remove.",
-            "only_extensions": (".tar.bz2", ".conda", ".tmp"),
+            "description": "Downloaded micromamba package archives (.conda, .tar.bz2).",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
+            "safe_to_clean": True,
+            "needs_sudo": False,
+            "default_checked": True,
+        },
+        # System Conda
+        {
+            "id": "system_conda_pkgs",
+            "name": "System Conda Package Cache",
+            "category": "package_managers",
+            "path": Path("/opt/conda/pkgs"),
+            "description": "System-wide conda package archives in /opt/conda.",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
+            "safe_to_clean": True,
+            "needs_sudo": True,
+            "default_checked": False,
+        },
+        {
+            "id": "system_miniforge_pkgs",
+            "name": "System Miniforge Package Cache",
+            "category": "package_managers",
+            "path": Path("/opt/miniforge3/pkgs"),
+            "description": "System-wide miniforge package archives in /opt/miniforge3.",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
+            "safe_to_clean": True,
+            "needs_sudo": True,
+            "default_checked": False,
+        },
+        {
+            "id": "system_miniconda_pkgs",
+            "name": "System Miniconda Package Cache",
+            "category": "package_managers",
+            "path": Path("/opt/miniconda3/pkgs"),
+            "description": "System-wide miniconda package archives in /opt/miniconda3.",
+            "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
+            "safe_to_clean": True,
+            "needs_sudo": True,
+            "default_checked": False,
+        },
+        # Repodata, Index, HTTP & Tool Caches
+        {
+            "id": "conda_http_cache",
+            "name": "Conda HTTP & Index Cache",
+            "category": "developer",
+            "path": Path.home() / ".cache" / "conda",
+            "description": "Conda channel repodata, notices, and HTTP cache files.",
+            "safe_to_clean": True,
+            "needs_sudo": False,
+            "default_checked": True,
+        },
+        {
+            "id": "mamba_http_cache",
+            "name": "Mamba Repodata Cache",
+            "category": "developer",
+            "path": Path.home() / ".cache" / "mamba",
+            "description": "Mamba channel repodata cache and metadata.",
+            "safe_to_clean": True,
+            "needs_sudo": False,
+            "default_checked": True,
+        },
+        {
+            "id": "condanest_cache",
+            "name": "Conda Nest Log & State Cache",
+            "category": "developer",
+            "path": Path.home() / ".cache" / "condanest",
+            "description": "Conda nest logs and temporary state cache.",
+            "safe_to_clean": True,
+            "needs_sudo": False,
+            "default_checked": True,
+        },
+        {
+            "id": "pixi_rattler_cache",
+            "name": "Pixi / Rattler Package Cache",
+            "category": "developer",
+            "path": Path.home() / ".cache" / "rattler" / "cache",
+            "description": "Pixi and rattler package archives and repodata cache.",
             "safe_to_clean": True,
             "needs_sudo": False,
             "default_checked": True,
@@ -374,14 +520,125 @@ class SystemCleaner:
     ]
 
     def __init__(self, target_definitions: Optional[List[Dict[str, Any]]] = None):
+        self._custom_targets = target_definitions is not None
         self.TARGET_DEFINITIONS = target_definitions or self.DEFAULT_TARGETS
+
+    @staticmethod
+    def find_conda_binaries() -> Dict[str, str]:
+        """
+        Locate all available conda/mamba/micromamba/pixi binaries across PATH and standard paths.
+        """
+        bins = {}
+        for name in ("mamba", "conda", "micromamba", "pixi"):
+            p = shutil.which(name)
+            if p:
+                bins[name] = p
+
+        candidates = [
+            ("miniforge", Path.home() / "miniforge3" / "bin"),
+            ("miniforge", Path.home() / "miniforge" / "bin"),
+            ("miniconda", Path.home() / "miniconda3" / "bin"),
+            ("miniconda", Path.home() / "miniconda" / "bin"),
+            ("mambaforge", Path.home() / "mambaforge" / "bin"),
+            ("anaconda", Path.home() / "anaconda3" / "bin"),
+            ("anaconda", Path.home() / "anaconda" / "bin"),
+            ("micromamba", Path.home() / ".local" / "bin"),
+            ("micromamba", Path.home() / ".micromamba" / "bin"),
+            ("pixi", Path.home() / ".local" / "bin"),
+            ("pixi", Path.home() / ".pixi" / "bin"),
+            ("system_conda", Path("/opt/conda/bin")),
+            ("system_miniforge", Path("/opt/miniforge3/bin")),
+            ("system_miniconda", Path("/opt/miniconda3/bin")),
+        ]
+        for _, cdir in candidates:
+            for bname in ("mamba", "conda", "micromamba", "pixi"):
+                bp = cdir / bname
+                if bp.exists() and bp.is_file() and os.access(str(bp), os.X_OK):
+                    if bname not in bins:
+                        bins[bname] = str(bp)
+        return bins
+
+    def find_conda_executable(self, preferred_path: Optional[Path] = None) -> Optional[str]:
+        """
+        Return the most suitable conda/mamba binary, checking preferred_path first.
+        """
+        if preferred_path:
+            for parent_dir in (preferred_path.parent, preferred_path):
+                for bname in ("mamba", "conda", "micromamba"):
+                    for sub in ("bin", "condabin", ""):
+                        candidate = (parent_dir / sub / bname) if sub else (parent_dir / bname)
+                        if candidate.exists() and candidate.is_file() and os.access(str(candidate), os.X_OK):
+                            return str(candidate)
+
+        bins = self.find_conda_binaries()
+        return bins.get("mamba") or bins.get("conda") or bins.get("micromamba") or bins.get("pixi")
+
+    def discover_conda_targets(self) -> List[Dict[str, Any]]:
+        """
+        Dynamically discover Conda/Mamba roots and package caches from active runtimes and filesystem.
+        """
+        discovered = []
+        seen_paths = set()
+
+        # 1. Inspect conda info --json if binary exists
+        c_bin = self.find_conda_executable()
+        if c_bin:
+            try:
+                res = subprocess.run([c_bin, "info", "--json"], capture_output=True, text=True, timeout=2.5)
+                if res.returncode == 0:
+                    info = json.loads(res.stdout)
+                    for pkg_dir in info.get("pkgs_dirs", []):
+                        p = Path(pkg_dir)
+                        if p.exists() and p.is_dir() and str(p.resolve()) not in seen_paths:
+                            seen_paths.add(str(p.resolve()))
+                            discovered.append({
+                                "id": f"dyn_conda_{p.name}_{abs(hash(str(p))) % 10000}",
+                                "name": f"Conda Package Cache ({p.parent.name})",
+                                "category": "package_managers",
+                                "path": p,
+                                "description": f"Configured conda package cache in {p}.",
+                                "only_extensions": (".tar.bz2", ".conda", ".tmp", ".lock", ".mamba_trash"),
+                                "safe_to_clean": True,
+                                "needs_sudo": Installer.check_needs_sudo(p),
+                                "default_checked": True,
+                            })
+            except Exception:
+                pass
+
+        return discovered
+
+    @staticmethod
+    def get_conda_dry_run_clean_size(conda_bin: str) -> tuple[int, int]:
+        """
+        Query conda clean dry run for exact reclaimable unused package and tarball size.
+        """
+        try:
+            res = subprocess.run(
+                [conda_bin, "clean", "--dry-run", "--json", "--all"],
+                capture_output=True,
+                text=True,
+                timeout=2.5,
+            )
+            if res.returncode == 0:
+                data = json.loads(res.stdout)
+                tarballs_info = data.get("tarballs", {})
+                pkgs_info = data.get("packages", {})
+                t_bytes = tarballs_info.get("total_size", 0)
+                p_bytes = pkgs_info.get("total_size", 0)
+                t_files = sum(len(v) for v in tarballs_info.get("pkgs_dirs", {}).values())
+                p_files = sum(len(v) for v in pkgs_info.get("pkgs_dirs", {}).values())
+                idx_files = len(data.get("index_cache", {}).get("files", []))
+                return (t_bytes + p_bytes), (t_files + p_files + idx_files)
+        except Exception:
+            pass
+        return 0, 0
 
     @staticmethod
     def get_directory_stats(dir_path: Path, only_extensions: Optional[tuple[str, ...]] = None) -> tuple[int, int]:
         """
         Recursively compute total size in bytes and number of files in directory.
         Does not follow symlinks. If only_extensions is provided, only files
-        matching those extensions are counted.
+        matching those extensions (or specific cache subdirs) are counted.
         """
         total_size = 0
         file_count = 0
@@ -410,7 +667,8 @@ class SystemCleaner:
                                     file_count += 1
                                 continue
                             if entry.is_dir():
-                                if not only_extensions:
+                                # Recurse into cache/temp subdirectories even when only_extensions is set
+                                if not only_extensions or entry.name in ("cache", ".trash", "tmp", "trash"):
                                     stack.append(Path(entry.path))
                             else:
                                 if only_extensions and not entry.name.endswith(only_extensions):
@@ -424,21 +682,61 @@ class SystemCleaner:
 
         return total_size, file_count
 
+    def get_all_targets(self) -> List[Dict[str, Any]]:
+        """
+        Return static targets combined with dynamically discovered Conda/Mamba targets.
+        """
+        all_targets = list(self.TARGET_DEFINITIONS)
+        if self._custom_targets:
+            return all_targets
+
+        known_resolved = {str(Path(t["path"]).resolve()) for t in all_targets if Path(t["path"]).exists()}
+
+        try:
+            for dyn in self.discover_conda_targets():
+                resolved = str(Path(dyn["path"]).resolve())
+                if resolved not in known_resolved:
+                    all_targets.append(dyn)
+                    known_resolved.add(resolved)
+        except Exception:
+            pass
+
+        return all_targets
+
     def scan(self) -> Dict[str, Any]:
         """
-        Scan all known cache targets and return sizes, counts, and summaries.
+        Scan all known and discovered cache targets and return sizes, counts, and summaries.
         """
         results = []
         total_size_bytes = 0
         total_files = 0
 
-        for target in self.TARGET_DEFINITIONS:
+        # Build target list: static targets + dynamically discovered conda/mamba targets
+        all_targets = self.get_all_targets()
+
+        # Check conda clean dry run once if available
+        conda_bin = self.find_conda_executable()
+        conda_clean_bytes, conda_clean_count = (0, 0)
+        if conda_bin:
+            conda_clean_bytes, conda_clean_count = self.get_conda_dry_run_clean_size(conda_bin)
+
+        applied_conda_clean = False
+
+        for target in all_targets:
             path = Path(target["path"])
             if not path.exists():
                 continue
 
             only_exts = target.get("only_extensions")
             size_bytes, count = self.get_directory_stats(path, only_extensions=only_exts)
+
+            # If this is an active conda pkgs cache and dry run found unused packages/tarballs
+            is_conda_pkg = ("conda" in target["id"] or "mamba" in target["id"]) and only_exts
+            if is_conda_pkg and not applied_conda_clean and conda_clean_bytes > 0:
+                size_bytes += conda_clean_bytes
+                count += conda_clean_count
+                applied_conda_clean = True
+
             if size_bytes == 0 and count == 0:
                 continue
 
@@ -464,7 +762,6 @@ class SystemCleaner:
                 "size_formatted": Database.format_size(size_bytes),
                 "file_count": count
             })
-
         return {
             "targets": results,
             "total_size_bytes": total_size_bytes,
@@ -568,14 +865,10 @@ class SystemCleaner:
         Clean files in path that match specific extensions, including conda/mamba package clean.
         """
         if "conda" in target_id or "mamba" in target_id:
-            conda_bin = shutil.which("conda") or shutil.which("mamba")
-            if not conda_bin:
-                local_conda = path.parent / "bin" / "conda"
-                if local_conda.exists() and os.access(str(local_conda), os.X_OK):
-                    conda_bin = str(local_conda)
+            conda_bin = self.find_conda_executable(preferred_path=path)
             if conda_bin:
                 try:
-                    subprocess.run([conda_bin, "clean", "--tarballs", "-y"], capture_output=True, check=False)
+                    subprocess.run([conda_bin, "clean", "--all", "-y"], capture_output=True, check=False)
                 except Exception:
                     pass
 
@@ -584,6 +877,8 @@ class SystemCleaner:
                 try:
                     if item.is_file() and item.name.endswith(only_exts):
                         item.unlink()
+                    elif item.is_dir() and item.name in ("cache", ".trash", "trash"):
+                        shutil.rmtree(item, ignore_errors=True)
                 except Exception:
                     continue
 
@@ -611,6 +906,8 @@ class SystemCleaner:
         Clean an individual cache target by id.
         """
         target = next((t for t in self.TARGET_DEFINITIONS if t["id"] == target_id), None)
+        if not target and not self._custom_targets:
+            target = next((t for t in self.discover_conda_targets() if t["id"] == target_id), None)
         if not target:
             return {
                 "id": target_id,
@@ -640,7 +937,11 @@ class SystemCleaner:
             }
 
         only_exts = target.get("only_extensions")
-        initial_size, initial_files = self.get_directory_stats(path, only_extensions=only_exts)
+        is_conda_pkg = ("conda" in target_id or "mamba" in target_id) and only_exts
+        if is_conda_pkg:
+            initial_size, initial_files = self.get_directory_stats(path)
+        else:
+            initial_size, initial_files = self.get_directory_stats(path, only_extensions=only_exts)
 
         try:
             if needs_sudo:
@@ -652,7 +953,11 @@ class SystemCleaner:
             else:
                 self._clean_user_directory(target_id, path)
 
-            new_size, new_files = self.get_directory_stats(path, only_extensions=only_exts)
+            if is_conda_pkg:
+                new_size, new_files = self.get_directory_stats(path)
+            else:
+                new_size, new_files = self.get_directory_stats(path, only_extensions=only_exts)
+
             freed = max(0, initial_size - new_size)
             files_freed = max(0, initial_files - new_files)
 

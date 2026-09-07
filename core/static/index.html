@@ -233,7 +233,9 @@
         </div>
 
         <!-- VIEW 5: DOTFILES MANAGER -->
+        <!-- VIEW 5: DOTFILES MANAGER (REBUILT) -->
         <div id="dotfilesView" style="display:none; flex-direction:column; gap:10px;">
+          <!-- Path & Status Bar -->
           <div class="retro-panel" style="margin-top:0;">
             <div class="retro-panel-title">DOTFILES — GNU STOW PROFILE SYNC</div>
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
@@ -241,8 +243,26 @@
                 <strong>REPO:</strong> <span id="dotfilesHeroTitle">~/.dotfiles</span> |
                 <strong>BRANCH:</strong> <span id="dotfilesBranch">main</span> |
                 <strong>STATE:</strong> <span id="dotfilesGitState" style="color:var(--c-terminal-green);">clean</span>
+            <div class="retro-panel-title">DOTFILES CONFIGURATION & REPO PATH</div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                <label style="font-weight:bold; min-width:90px;">DOTFILES DIR:</label>
+                <input type="text" id="dotfilesRepoInput" class="retro-input" style="flex:1; min-width:240px;" placeholder="~/.dotfiles">
+                <button class="retro-btn" onclick="app.browseDotfilesDir()">Browse...</button>
+                <button class="retro-btn retro-btn-green" onclick="app.saveDotfilesPath()">Set & Scan</button>
+                <button class="retro-btn" onclick="app.fetchDotfilesStatus(true)">Refresh</button>
               </div>
               <button class="retro-btn" onclick="app.fetchDotfilesStatus(true)">Refresh</button>
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; font-size:12px; border-top:1px dashed var(--c-shadow); padding-top:6px;">
+                <div>
+                  <strong>TARGET:</strong> <span id="dotfilesTargetDir" style="color:var(--c-warm-beige);">~</span> |
+                  <strong>STOW:</strong> <span id="dotfilesStowBadge" style="color:var(--c-terminal-green-bright);">Checking...</span> |
+                  <strong>GIT:</strong> <span id="dotfilesGitBadge" style="color:var(--c-terminal-green-bright);">Checking...</span>
+                </div>
+                <div>
+                  <strong>STATUS:</strong> <span id="dotfilesHeroStatus" style="color:var(--c-terminal-green);">Ready</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -255,6 +275,34 @@
                   <button class="retro-btn" id="btnDotfilesCheck" onclick="app.runDotfilesCommand('check')">Preview Links</button>
                   <button class="retro-btn retro-btn-green" id="btnDotfilesApply" onclick="app.runDotfilesCommand('apply')">Apply Stow Links</button>
                   <button class="retro-btn" id="btnDotfilesUpdate" onclick="app.runDotfilesCommand('update')">Git Pull & Sync</button>
+          <!-- Main Controls Grid -->
+          <div style="display:grid; grid-template-columns:minmax(320px, 1fr) minmax(360px, 1.2fr); gap:10px;">
+            <!-- Left Column: Stow & Git Controls -->
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <!-- Stow Control Panel -->
+              <div class="retro-panel" style="margin-top:0;">
+                <div class="retro-panel-title">GNU STOW CONTROLS</div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <div style="display:flex; flex-wrap:wrap; gap:12px; font-size:11px; padding:4px 0;">
+                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                      <input type="checkbox" id="chkStowSimulate"> Simulate (-n / dry run)
+                    </label>
+                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                      <input type="checkbox" id="chkStowAdopt"> Adopt (--adopt)
+                    </label>
+                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                      <input type="checkbox" id="chkStowNoFolding"> No Folding (--no-folding)
+                    </label>
+                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                      <input type="checkbox" id="chkStowDotfilesFlag"> Dot-prefix (--dotfiles)
+                    </label>
+                  </div>
+                  <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                    <button class="retro-btn retro-btn-green" onclick="app.runStow('stow', '__all__')">Stow All</button>
+                    <button class="retro-btn" onclick="app.runStow('restow', '__all__')">Restow All</button>
+                    <button class="retro-btn retro-btn-warn" onclick="app.runStow('unstow', '__all__')">Unstow All</button>
+                    <button class="retro-btn" onclick="app.runStow('stow', '__all__', {simulate:true})">Dry Run All</button>
+                  </div>
                 </div>
                 <div style="border-top:1px dashed var(--c-shadow); padding-top:6px; display:flex; gap:6px;">
                   <button class="retro-btn" onclick="app.runDotfilesCommand('gnome-out')">Export GNOME</button>
@@ -265,6 +313,39 @@
                   <div style="display:flex; gap:6px; margin-top:4px;">
                     <input type="text" id="dotfilesCommitMsg" class="retro-input" style="flex:1;" placeholder="Commit msg...">
                     <button class="retro-btn retro-btn-warn" id="btnDotfilesSave" onclick="app.saveDotfiles()">Save & Push</button>
+              </div>
+
+              <!-- Git Control Panel -->
+              <div class="retro-panel" id="dotfilesGitPanel" style="margin-top:0;">
+                <div class="retro-panel-title">GIT VERSION CONTROL</div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px; font-size:11px;">
+                    <div><strong>BRANCH:</strong> <span id="dotfilesGitBranch" style="color:var(--c-terminal-green-bright);">-</span></div>
+                    <div><strong>AHEAD/BEHIND:</strong> +<span id="dotfilesGitAhead">0</span> / -<span id="dotfilesGitBehind">0</span></div>
+                    <div><strong>FILES:</strong> <span id="dotfilesGitModified">0</span> mod, <span id="dotfilesGitUntracked">0</span> untracked</div>
+                  </div>
+                  <div id="dotfilesGitLastCommit" style="font-size:11px; color:var(--c-warm-beige); background:var(--c-near-black); padding:4px 6px; border:1px solid var(--c-shadow); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    Last commit: -
+                  </div>
+                  <div>
+                    <label style="font-size:11px;">Commit Message:</label>
+                    <div style="display:flex; gap:6px; margin-top:3px;">
+                      <input type="text" id="dotfilesCommitMsg" class="retro-input" style="flex:1;" placeholder="Update dotfiles configs...">
+                    </div>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                    <label style="display:flex; align-items:center; gap:4px; font-size:11px; cursor:pointer; color:var(--c-warning-yellow);">
+                      <input type="checkbox" id="chkGitForce"> Force Push (--force-with-lease)
+                    </label>
+                  </div>
+                  <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                    <button class="retro-btn" onclick="app.runGit('pull')">Git Pull</button>
+                    <button class="retro-btn" onclick="app.runGit('commit')">Git Commit</button>
+                    <button class="retro-btn" onclick="app.runGit('push')">Git Push</button>
+                    <button class="retro-btn retro-btn-green" onclick="app.runGit('commit_push')">Commit & Push</button>
+                    <button class="retro-btn" onclick="app.runGit('diff')">Diff</button>
+                    <button class="retro-btn" onclick="app.runGit('status')">Status</button>
+                    <button class="retro-btn" onclick="app.runGit('log')">Log</button>
                   </div>
                 </div>
               </div>
@@ -275,14 +356,36 @@
               <div class="retro-panel-title">STOW PACKAGES</div>
               <div id="dotfilesPackagesList" style="display:flex; flex-direction:column; gap:4px; max-height:200px; overflow-y:auto;">
                 <!-- Populated by app.js -->
+            <!-- Right Column: Stow Packages Explorer -->
+            <div class="retro-panel" style="margin-top:0; display:flex; flex-direction:column;">
+              <div class="retro-panel-title" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>PACKAGES EXPLORER [<span id="dotfilesPkgCount">0</span>]</span>
+                <span id="dotfilesStowedSummary" style="font-size:10px; color:var(--c-terminal-green-bright);">0 Stowed</span>
+              </div>
+              <div style="display:flex; gap:6px; margin-bottom:8px;">
+                <input type="text" id="dotfilesPkgSearch" class="retro-input" style="flex:1;" placeholder="Filter packages..." oninput="app.filterDotfilesPackages()">
+                <button class="retro-btn" style="padding:2px 8px; font-size:11px;" onclick="app.setDotfilesFilter('all')">All</button>
+                <button class="retro-btn" style="padding:2px 8px; font-size:11px;" onclick="app.setDotfilesFilter('stowed')">Stowed</button>
+                <button class="retro-btn" style="padding:2px 8px; font-size:11px;" onclick="app.setDotfilesFilter('unstowed')">Unstowed</button>
+              </div>
+              <div id="dotfilesPackagesList" style="display:flex; flex-direction:column; gap:6px; max-height:420px; overflow-y:auto; flex:1;">
+                <!-- Populated dynamically by app.js -->
               </div>
             </div>
           </div>
 
           <!-- Console Output -->
+          <!-- Bottom Panel: Console Output -->
           <div class="retro-panel">
             <div class="retro-panel-title">STOW CONSOLE OUTPUT [<span id="dotfilesOutputBadge">Ready</span>]</div>
             <pre id="dotfilesOutputConsole" class="terminal-box" style="max-height:180px;">Ready.</pre>
+            <div class="retro-panel-title" style="display:flex; justify-content:space-between; align-items:center;">
+              <span>CONSOLE OUTPUT [<span id="dotfilesOutputBadge">Ready</span>]</span>
+              <div style="display:flex; gap:6px;">
+                <button class="retro-btn" style="padding:2px 8px; font-size:10px;" onclick="app.clearDotfilesConsole()">Clear</button>
+              </div>
+            </div>
+            <pre id="dotfilesOutputConsole" class="terminal-box" style="max-height:220px; overflow-y:auto; white-space:pre-wrap; font-family:monospace; margin-bottom:0;">Ready.</pre>
           </div>
         </div>
 
