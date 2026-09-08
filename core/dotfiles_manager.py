@@ -764,6 +764,8 @@ class DotfilesManager:
             cmd_args = [str(self.script_path), command]
             if message:
                 cmd_args.append(message)
+            if package:
+                cmd_args.append(package)
             try:
                 res = subprocess.run(cmd_args, cwd=str(self.repo_dir), capture_output=True, text=True, timeout=120)
                 if res.returncode == 0:
@@ -776,6 +778,11 @@ class DotfilesManager:
                     }
             except Exception:
                 pass
+
+        if command in ("gnome-out", "export-gnome"):
+            return self._run_gnome_export()
+        if command in ("gnome-in", "import-gnome"):
+            return self._run_gnome_import()
 
         if command in self.ALLOWED_STOW_ACTIONS:
             if not package:
@@ -807,3 +814,119 @@ class DotfilesManager:
             "returncode": -1,
             "error": f"Command '{command}' is not allowed.",
         }
+
+    def _run_gnome_export(self) -> Dict[str, Any]:
+        """Export GNOME settings using dconf."""
+        out_dir = self.repo_dir / "gnome" / ".config" / "gnome"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        logs: List[str] = []
+        try:
+            p = subprocess.run(["gnome-shell", "--version"], capture_output=True, text=True)
+            if p.returncode == 0 and p.stdout:
+                (out_dir / "gnome-version.txt").write_text(p.stdout)
+                logs.append("GNOME shell version exported")
+
+            p = subprocess.run(["gnome-extensions", "list"], capture_output=True, text=True)
+            if p.returncode == 0 and p.stdout:
+                (out_dir / "extensions-list.txt").write_text(p.stdout)
+            p = subprocess.run(["gnome-extensions", "list", "--enabled"], capture_output=True, text=True)
+            if p.returncode == 0 and p.stdout:
+                (out_dir / "extensions-enabled.txt").write_text(p.stdout)
+                logs.append("GNOME extensions list exported")
+
+            scopes = [
+                ("/org/gnome/desktop/interface/", "interface.dconf"),
+                ("/org/gnome/desktop/wm/keybindings/", "keybindings.dconf"),
+                ("/org/gnome/settings-daemon/plugins/media-keys/", "media-keys.dconf"),
+                ("/org/gnome/shell/extensions/", "extension-settings.dconf"),
+            ]
+            for path, filename in scopes:
+                dump = subprocess.run(["dconf", "dump", path], capture_output=True, text=True)
+                if dump.returncode == 0 and dump.stdout:
+                    (out_dir / filename).write_text(dump.stdout)
+                    logs.append(f"Exported {path} -> {filename}")
+
+            root_dump = subprocess.run(["dconf", "dump", "/"], capture_output=True, text=True)
+            if root_dump.returncode == 0 and root_dump.stdout:
+                (self.repo_dir / "dconf-settings.ini").write_text(root_dump.stdout)
+                logs.append("Exported root dconf -> dconf-settings.ini")
+
+            return {
+                "success": True,
+                "command": "gnome-out",
+                "output": "\n".join(logs) or "GNOME settings exported successfully.",
+                "returncode": 0,
+                "error": None,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "command": "gnome-out",
+                "output": "\n".join(logs),
+                "returncode": -1,
+                "error": f"GNOME export failed: {e}",
+            }
+
+    def _run_gnome_import(self) -> Dict[str, Any]:
+        """Import GNOME settings using dconf."""
+        src_dir = self.repo_dir / "gnome" / ".config" / "gnome"
+        ini_file = self.repo_dir / "dconf-settings.ini"
+        logs: List[str] = []
+        try:
+            loaded_any = False
+            if src_dir.exists():
+                scopes = [
+                    ("/org/gnome/desktop/interface/", "interface.dconf"),
+                    ("/org/gnome/desktop/wm/keybindings/", "keybindings.dconf"),
+                    ("/org/gnome/settings-daemon/plugins/media-keys/", "media-keys.dconf"),
+                    ("/org/gnome/shell/extensions/", "extension-settings.dconf"),
+                ]
+                for path, filename in scopes:
+                    f = src_dir / filename
+                    if f.exists():
+                        content = f.read_text()
+                        p = subprocess.run(["dconf", "load", path], input=content, text=True, capture_output=True)
+                        if p.returncode == 0:
+                            logs.append(f"Loaded {filename} into {path}")
+                            loaded_any = True
+
+                ext_file = src_dir / "extensions-enabled.txt"
+                if ext_file.exists():
+                    for uuid in ext_file.read_text().splitlines():
+                        uuid = uuid.strip()
+                        if uuid:
+                            subprocess.run(["gnome-extensions", "enable", uuid], capture_output=True, text=True)
+                    logs.append("Enabled extensions from extensions-enabled.txt")
+                    loaded_any = True
+
+            if not loaded_any and ini_file.exists():
+                content = ini_file.read_text()
+                p = subprocess.run(["dconf", "load", "/"], input=content, text=True, capture_output=True)
+                if p.returncode == 0:
+                    logs.append("Loaded root settings from dconf-settings.ini")
+                    loaded_any = True
+
+            if not loaded_any:
+                return {
+                    "success": False,
+                    "command": "gnome-in",
+                    "output": "",
+                    "returncode": -1,
+                    "error": f"No GNOME settings found at {src_dir} or {ini_file}",
+                }
+
+            return {
+                "success": True,
+                "command": "gnome-in",
+                "output": "\n".join(logs) or "GNOME settings imported successfully.",
+                "returncode": 0,
+                "error": None,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "command": "gnome-in",
+                "output": "\n".join(logs),
+                "returncode": -1,
+                "error": f"GNOME import failed: {e}",
+            }

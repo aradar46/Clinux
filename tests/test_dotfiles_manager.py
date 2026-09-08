@@ -324,6 +324,20 @@ class TestDotfilesHttpApi(unittest.TestCase):
             data = json.loads(resp.read().decode("utf-8"))
             self.assertIn("command", data)
 
+    def test_dotfiles_run_gnome_commands(self):
+        import urllib.request
+        import json
+
+        for cmd in ("gnome-out", "gnome-in"):
+            url = f"http://127.0.0.1:{self.port}/api/dotfiles/run"
+            payload = json.dumps({"command": cmd}).encode("utf-8")
+            req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req) as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode("utf-8"))
+                self.assertEqual(data.get("command"), cmd)
+                self.assertIn("success", data)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1633,6 +1633,48 @@ class ClinuxApp {
     }
   }
 
+  async runDotfilesRun(command, message = null, packageName = null) {
+    const consoleElem = document.getElementById('dotfilesOutputConsole');
+    const badgeElem = document.getElementById('dotfilesOutputBadge');
+
+    if (badgeElem) {
+      badgeElem.textContent = 'Running ' + command + '...';
+      badgeElem.style.color = 'var(--c-warning-yellow)';
+    }
+    if (consoleElem) {
+      consoleElem.textContent = `\n>>> [COMMAND ${command.toUpperCase()}]\n`;
+    }
+
+    try {
+      const res = await fetch('/api/dotfiles/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, message, package: packageName })
+      });
+      const data = await res.json();
+
+      const logText = (data.command ? `CMD: ${data.command}\n\n` : '') +
+                      (data.output || (data.success ? 'Success.' : 'Failed.')) +
+                      (data.error ? `\nERROR: ${data.error}` : '');
+
+      if (consoleElem) consoleElem.textContent = logText;
+      if (badgeElem) {
+        badgeElem.textContent = data.success ? 'Success' : 'Failed';
+        badgeElem.style.color = data.success ? 'var(--c-terminal-green-bright)' : 'var(--c-alert-red)';
+      }
+
+      this.toast(`Command ${command}: ${data.success ? 'Done' : 'Error'}`, data.success ? 'success' : 'error');
+      await this.fetchDotfilesStatus(false);
+    } catch (e) {
+      if (consoleElem) consoleElem.textContent = `Command error: ${e.message}`;
+      if (badgeElem) {
+        badgeElem.textContent = 'Error';
+        badgeElem.style.color = 'var(--c-alert-red)';
+      }
+      this.toast(`Command error: ${e.message}`, 'error');
+    }
+  }
+
   async runDotfilesCommand(command, message = null, packageName = null) {
     if (command === 'stow' || command === 'unstow' || command === 'restow') {
       return this.runStow(command, packageName);
@@ -1651,7 +1693,11 @@ class ClinuxApp {
     if (command === 'update') {
       return this.runGit('pull');
     }
-    return this.runGit(command);
+    const gitActions = ['commit', 'commit_push', 'diff', 'fetch', 'force_pull', 'init', 'log', 'pull', 'pull_overwrite', 'push', 'rebase', 'status'];
+    if (gitActions.includes(command)) {
+      return this.runGit(command, message);
+    }
+    return this.runDotfilesRun(command, message, packageName);
   }
 
   saveDotfiles() {
