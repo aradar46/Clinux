@@ -254,12 +254,12 @@ class ClinuxApp {
 
       if (cpuTable) {
         if (!data.top_cpu || data.top_cpu.length === 0) {
-          cpuTable.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:12px;">No processes found</td></tr>';
+          cpuTable.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:16px;">No processes found</td></tr>';
         } else {
           cpuTable.innerHTML = data.top_cpu.map(p => `
             <tr>
               <td style="font-family:monospace; color:var(--text-muted);">${this.escapeHtml(p.pid)}</td>
-              <td style="font-weight:bold; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.escapeHtml(p.command)}">${this.escapeHtml(p.command)}</td>
+              <td style="font-weight:bold; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.escapeHtml(p.command)}">${this.escapeHtml(p.command)}</td>
               <td style="text-align:right; font-weight:bold; color:var(--c-warning-yellow);">${this.escapeHtml(p.cpu)}%</td>
               <td style="text-align:right; color:var(--text-muted);">${this.escapeHtml(p.mem)}%</td>
             </tr>
@@ -269,12 +269,12 @@ class ClinuxApp {
 
       if (memTable) {
         if (!data.top_mem || data.top_mem.length === 0) {
-          memTable.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:12px;">No processes found</td></tr>';
+          memTable.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:16px;">No processes found</td></tr>';
         } else {
           memTable.innerHTML = data.top_mem.map(p => `
             <tr>
               <td style="font-family:monospace; color:var(--text-muted);">${this.escapeHtml(p.pid)}</td>
-              <td style="font-weight:bold; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.escapeHtml(p.command)}">${this.escapeHtml(p.command)}</td>
+              <td style="font-weight:bold; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.escapeHtml(p.command)}">${this.escapeHtml(p.command)}</td>
               <td style="text-align:right; color:var(--text-muted);">${this.escapeHtml(p.mem)}%</td>
               <td style="text-align:right; font-weight:bold; color:var(--c-terminal-green-bright);">${this.escapeHtml(p.rss)}</td>
             </tr>
@@ -314,6 +314,8 @@ class ClinuxApp {
         if (disk && diskEl) {
           diskEl.textContent = `${disk.used_formatted} / ${disk.total_formatted} (${disk.usage_percent}%)`;
           diskEl.style.color = 'var(--c-warm-beige)';
+          const sub = document.getElementById('dashDiskSub');
+          if (sub) sub.textContent = `Available Free: ${disk.free_formatted || 'N/A'}`;
         }
       }
 

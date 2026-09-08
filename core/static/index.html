@@ -86,67 +86,77 @@
         </div>
 
         <!-- VIEW 1: SYSTEM DASHBOARD -->
-        <div id="dashboardView" class="retro-panel" style="display:flex; flex-direction:column; gap:12px; margin-top:0;">
-          <div class="retro-panel-title" style="display:flex; justify-content:space-between; align-items:center;">
-            <span>PROCESS & RESOURCE MONITOR</span>
-            <button class="retro-btn" style="padding:2px 8px; font-size:11px;" onclick="app.refreshTopProcesses()">Refresh Processes</button>
+        <div id="dashboardView" style="display:flex; flex-direction:column; gap:12px; margin-top:0;">
+          <!-- Top Controls Toolbar -->
+          <div class="action-toolbar" style="margin-top:0;">
+            <button class="retro-btn retro-btn-green" onclick="app.refreshTopProcesses()">[ ⟳ REFRESH PROCESSES ]</button>
+            <button class="retro-btn retro-btn-warn" id="btnScanDisk" onclick="app.loadDiskUsageOnDemand()">[ ⛁ SCAN DISK USAGE ]</button>
+            <div style="flex:1;"></div>
+            <span style="font-size:11px; color:var(--text-muted); font-family:monospace; letter-spacing:1px;">RESOURCE &amp; CAPACITY MONITOR</span>
           </div>
 
-          <!-- On-Demand Storage & Disk Usage -->
-          <div class="retro-panel" style="margin-top:0;">
-            <div class="retro-panel-title" style="display:flex; justify-content:space-between; align-items:center;">
-              <span>STORAGE & DISK USAGE</span>
-              <button class="retro-btn retro-btn-warn" style="padding:2px 10px; font-size:11px;" id="btnScanDisk" onclick="app.loadDiskUsageOnDemand()">[ SCAN DISK USAGE ]</button>
-            </div>
-            <div id="dashDiskDetails" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; padding:6px 4px; font-size:12px;">
-              <div>Disk Space: <strong style="color:var(--text-muted);" id="dashDiskUsageStr">Click [Scan Disk Usage] to load</strong></div>
-              <div>AI Footprint: <strong style="color:var(--text-muted);" id="dashAIModelSize">--</strong></div>
-              <div>Reclaimable Junk: <strong style="color:var(--text-muted);" id="dashCleanerSize">--</strong></div>
+          <!-- Storage & Capacity Stat Panel -->
+          <div class="retro-panel" style="margin-top:4px;">
+            <div class="retro-panel-title">STORAGE &amp; CAPACITY</div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+              <div class="retro-stat-card">
+                <div class="retro-stat-label">PRIMARY DISK USAGE</div>
+                <div class="retro-stat-value" id="dashDiskUsageStr">Unscanned</div>
+                <div class="retro-stat-desc" id="dashDiskSub">Click [Scan Disk Usage] to load</div>
+              </div>
+              <div class="retro-stat-card">
+                <div class="retro-stat-label">AI &amp; AGENT STORAGE</div>
+                <div class="retro-stat-value" style="color:var(--c-terminal-green-bright);" id="dashAIModelSize">--</div>
+                <div class="retro-stat-desc">HuggingFace, Ollama &amp; agent workspaces</div>
+              </div>
+              <div class="retro-stat-card">
+                <div class="retro-stat-label">RECLAIMABLE JUNK</div>
+                <div class="retro-stat-value" style="color:var(--c-warning-yellow);" id="dashCleanerSize">--</div>
+                <div class="retro-stat-desc">Package, build &amp; app cache files</div>
+              </div>
             </div>
           </div>
 
-          <!-- Top CPU & RAM Consumers -->
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:12px;">
+          <!-- Top CPU & RAM Process Tables -->
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:12px; margin-top:4px;">
             <!-- Top CPU Table -->
             <div class="retro-panel" style="margin-top:0;">
-              <div class="retro-panel-title" style="color:var(--c-warning-yellow); display:flex; justify-content:space-between;">
-                <span>TOP PROCESSES (CPU)</span>
-                <span style="font-size:10px; color:var(--text-muted);">SORT: %CPU DESC</span>
+              <div class="retro-panel-title" style="color:var(--c-warning-yellow);">TOP PROCESSES (CPU)</div>
+              <div style="overflow-x:auto;">
+                <table class="retro-table" style="width:100%;">
+                  <thead>
+                    <tr>
+                      <th style="width:60px;">PID</th>
+                      <th>APP / COMMAND</th>
+                      <th style="width:65px; text-align:right;">CPU %</th>
+                      <th style="width:65px; text-align:right;">RAM %</th>
+                    </tr>
+                  </thead>
+                  <tbody id="topCpuTable">
+                    <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:16px;">Loading processes...</td></tr>
+                  </tbody>
+                </table>
               </div>
-              <table class="retro-table">
-                <thead>
-                  <tr>
-                    <th style="width:60px;">PID</th>
-                    <th>APP / COMMAND</th>
-                    <th style="width:65px; text-align:right;">CPU %</th>
-                    <th style="width:65px; text-align:right;">RAM %</th>
-                  </tr>
-                </thead>
-                <tbody id="topCpuTable">
-                  <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:12px;">Loading processes...</td></tr>
-                </tbody>
-              </table>
             </div>
 
             <!-- Top RAM Table -->
             <div class="retro-panel" style="margin-top:0;">
-              <div class="retro-panel-title" style="color:var(--c-terminal-green-bright); display:flex; justify-content:space-between;">
-                <span>TOP PROCESSES (MEMORY)</span>
-                <span style="font-size:10px; color:var(--text-muted);">SORT: %RAM DESC</span>
+              <div class="retro-panel-title" style="color:var(--c-terminal-green-bright);">TOP PROCESSES (MEMORY)</div>
+              <div style="overflow-x:auto;">
+                <table class="retro-table" style="width:100%;">
+                  <thead>
+                    <tr>
+                      <th style="width:60px;">PID</th>
+                      <th>APP / COMMAND</th>
+                      <th style="width:65px; text-align:right;">RAM %</th>
+                      <th style="width:85px; text-align:right;">MEMORY</th>
+                    </tr>
+                  </thead>
+                  <tbody id="topMemTable">
+                    <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:16px;">Loading processes...</td></tr>
+                  </tbody>
+                </table>
               </div>
-              <table class="retro-table">
-                <thead>
-                  <tr>
-                    <th style="width:60px;">PID</th>
-                    <th>APP / COMMAND</th>
-                    <th style="width:65px; text-align:right;">RAM %</th>
-                    <th style="width:80px; text-align:right;">MEMORY</th>
-                  </tr>
-                </thead>
-                <tbody id="topMemTable">
-                  <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:12px;">Loading processes...</td></tr>
-                </tbody>
-              </table>
             </div>
           </div>
         </div>

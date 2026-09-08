@@ -318,8 +318,8 @@ class AppRequestHandler(BaseHTTPRequestHandler):
 
             self._send_json({
                 "success": True,
-                "top_cpu": parse_ps(p_cpu.stdout, 10),
-                "top_mem": parse_ps(p_mem.stdout, 10)
+                "top_cpu": parse_ps(p_cpu.stdout, 12),
+                "top_mem": parse_ps(p_mem.stdout, 12)
             })
         except Exception as e:
             self._send_error_json(f"Failed to fetch processes: {e}", status=500)
