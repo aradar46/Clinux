@@ -200,7 +200,11 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         elif path == '/api/icons/view':
             self._handle_api_icons_view(query)
         elif path == '/api/stats':
-            self._handle_api_stats()
+            self._handle_api_stats(query)
+        elif path == '/api/stats/disk':
+            self._handle_api_stats_disk()
+        elif path == '/api/system/processes':
+            self._handle_api_processes()
         elif path == '/api/system-info':
             self._handle_api_system_info()
         elif path == '/api/options':
@@ -265,11 +269,60 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404, "Icon Not Found")
 
-    def _handle_api_stats(self):
+    def _handle_api_stats(self, query: Optional[Dict[str, list]] = None):
         stats = self.db.get_stats()
-        disk_data = self.disk_analyzer.analyze()
-        stats["disk"] = disk_data
+        if query and 'include_disk' in query:
+            stats["disk"] = self.disk_analyzer.analyze()
         self._send_json({"stats": stats})
+
+    def _handle_api_stats_disk(self):
+        disk_data = self.disk_analyzer.analyze()
+        self._send_json({"disk": disk_data})
+
+    def _handle_api_processes(self):
+        try:
+            cmd_cpu = ["ps", "-eo", "pid,user,%cpu,%mem,rss,comm", "--sort=-%cpu"]
+            p_cpu = subprocess.run(cmd_cpu, capture_output=True, text=True, timeout=3)
+            cmd_mem = ["ps", "-eo", "pid,user,%cpu,%mem,rss,comm", "--sort=-%mem"]
+            p_mem = subprocess.run(cmd_mem, capture_output=True, text=True, timeout=3)
+
+            def parse_ps(output: str, limit: int = 10):
+                lines = output.strip().splitlines()
+                if not lines:
+                    return []
+                results = []
+                for line in lines[1:limit+1]:
+                    parts = line.split(None, 5)
+                    if len(parts) >= 6:
+                        pid, user, cpu, mem, rss_kb, comm = parts
+                        try:
+                            rss_num = int(rss_kb)
+                            if rss_num >= 1024 * 1024:
+                                rss_fmt = f"{rss_num / (1024 * 1024):.1f} GB"
+                            elif rss_num >= 1024:
+                                rss_fmt = f"{rss_num / 1024:.1f} MB"
+                            else:
+                                rss_fmt = f"{rss_num} KB"
+                        except ValueError:
+                            rss_fmt = f"{rss_kb} KB"
+
+                        results.append({
+                            "pid": pid,
+                            "user": user,
+                            "cpu": cpu,
+                            "mem": mem,
+                            "rss": rss_fmt,
+                            "command": comm
+                        })
+                return results
+
+            self._send_json({
+                "success": True,
+                "top_cpu": parse_ps(p_cpu.stdout, 10),
+                "top_mem": parse_ps(p_mem.stdout, 10)
+            })
+        except Exception as e:
+            self._send_error_json(f"Failed to fetch processes: {e}", status=500)
 
     def _handle_api_system_info(self):
         path_env = os.environ.get("PATH", "").split(":")

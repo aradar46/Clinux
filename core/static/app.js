@@ -70,7 +70,7 @@ class ClinuxApp {
     await this.fetchOptions();
     await this.refreshApps();
     await this.fetchDiscovered();
-    await this.refreshDashboardStats();
+    await this.refreshTopProcesses();
     if (this.options && this.options.behavior && !this.options.behavior.start_dashboard) {
       const firstTab = (this.options.tabs.find(t => t.visible) || {}).id || 'dashboard';
       this.setTab(firstTab);
@@ -244,39 +244,103 @@ class ClinuxApp {
     }
   }
 
-  async refreshDashboardStats() {
+  async refreshTopProcesses() {
+    const cpuTable = document.getElementById('topCpuTable');
+    const memTable = document.getElementById('topMemTable');
     try {
-      const statsRes = await fetch('/api/stats');
-      if (statsRes.ok) {
-        const statsData = await statsRes.json();
-        const disk = statsData.stats?.disk;
-        if (disk) {
-          const healthEl = document.getElementById('dashHealthTitle');
-          if (healthEl && disk.health_display_str) {
-            healthEl.innerText = disk.health_display_str;
-          }
-          const diskEl = document.getElementById('dashDiskUsageStr');
-          if (diskEl) {
-            diskEl.innerText = `${disk.used_formatted} / ${disk.total_formatted} (${disk.usage_percent}%)`;
-          }
+      const res = await fetch('/api/system/processes');
+      if (!res.ok) throw new Error('Failed to load processes');
+      const data = await res.json();
+
+      if (cpuTable) {
+        if (!data.top_cpu || data.top_cpu.length === 0) {
+          cpuTable.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:12px;">No processes found</td></tr>';
+        } else {
+          cpuTable.innerHTML = data.top_cpu.map(p => `
+            <tr>
+              <td style="font-family:monospace; color:var(--text-muted);">${this.escapeHtml(p.pid)}</td>
+              <td style="font-weight:bold; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.escapeHtml(p.command)}">${this.escapeHtml(p.command)}</td>
+              <td style="text-align:right; font-weight:bold; color:var(--c-warning-yellow);">${this.escapeHtml(p.cpu)}%</td>
+              <td style="text-align:right; color:var(--text-muted);">${this.escapeHtml(p.mem)}%</td>
+            </tr>
+          `).join('');
         }
       }
 
-      const storageRes = await fetch('/api/ai/storage');
-      if (storageRes.ok) {
-        const sData = await storageRes.json();
-        const aiEl = document.getElementById('dashAIModelSize');
-        if (aiEl) aiEl.innerText = sData.total_size_formatted || '0 GB';
-      }
-
-      const cleanRes = await fetch('/api/cleaner/scan');
-      if (cleanRes.ok) {
-        const cData = await cleanRes.json();
-        const clEl = document.getElementById('dashCleanerSize');
-        if (clEl) clEl.innerText = cData.total_size_formatted || '0 GB';
+      if (memTable) {
+        if (!data.top_mem || data.top_mem.length === 0) {
+          memTable.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:12px;">No processes found</td></tr>';
+        } else {
+          memTable.innerHTML = data.top_mem.map(p => `
+            <tr>
+              <td style="font-family:monospace; color:var(--text-muted);">${this.escapeHtml(p.pid)}</td>
+              <td style="font-weight:bold; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.escapeHtml(p.command)}">${this.escapeHtml(p.command)}</td>
+              <td style="text-align:right; color:var(--text-muted);">${this.escapeHtml(p.mem)}%</td>
+              <td style="text-align:right; font-weight:bold; color:var(--c-terminal-green-bright);">${this.escapeHtml(p.rss)}</td>
+            </tr>
+          `).join('');
+        }
       }
     } catch (e) {
-      console.error('Failed dashboard stats:', e);
+      if (cpuTable) cpuTable.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--c-danger-red); padding:12px;">Error: ${this.escapeHtml(e.message)}</td></tr>`;
+      if (memTable) memTable.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--c-danger-red); padding:12px;">Error: ${this.escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async loadDiskUsageOnDemand() {
+    const btn = document.getElementById('btnScanDisk');
+    const diskEl = document.getElementById('dashDiskUsageStr');
+    const aiEl = document.getElementById('dashAIModelSize');
+    const clEl = document.getElementById('dashCleanerSize');
+
+    if (btn) {
+      btn.textContent = '[ SCANNING... ]';
+      btn.disabled = true;
+    }
+    if (diskEl) diskEl.textContent = 'Analyzing disk space...';
+    if (aiEl) aiEl.textContent = 'Scanning models...';
+    if (clEl) clEl.textContent = 'Calculating junk...';
+
+    try {
+      const [diskRes, storageRes, cleanRes] = await Promise.all([
+        fetch('/api/stats/disk'),
+        fetch('/api/ai/storage'),
+        fetch('/api/cleaner/scan')
+      ]);
+
+      if (diskRes.ok) {
+        const dData = await diskRes.json();
+        const disk = dData.disk;
+        if (disk && diskEl) {
+          diskEl.textContent = `${disk.used_formatted} / ${disk.total_formatted} (${disk.usage_percent}%)`;
+          diskEl.style.color = 'var(--c-warm-beige)';
+        }
+      }
+
+      if (storageRes.ok) {
+        const sData = await storageRes.json();
+        if (aiEl) {
+          aiEl.textContent = sData.total_size_formatted || '0 B';
+          aiEl.style.color = 'var(--c-warm-beige)';
+        }
+      }
+
+      if (cleanRes.ok) {
+        const cData = await cleanRes.json();
+        if (clEl) {
+          clEl.textContent = cData.total_size_formatted || '0 B';
+          clEl.style.color = 'var(--c-warning-yellow)';
+        }
+      }
+
+      this.toast('Storage analysis complete', 'success');
+    } catch (e) {
+      this.toast('Disk scan failed: ' + e.message, 'error');
+    } finally {
+      if (btn) {
+        btn.textContent = '[ RE-SCAN DISK USAGE ]';
+        btn.disabled = false;
+      }
     }
   }
 
@@ -305,7 +369,7 @@ class ClinuxApp {
     this.toast('Refreshing system info...', 'info');
     await this.refreshApps();
     await this.fetchDiscovered();
-    await this.refreshDashboardStats();
+    await this.refreshTopProcesses();
     this.toast('System refresh complete', 'success');
   }
 
@@ -390,7 +454,7 @@ class ClinuxApp {
 
     if (tab === 'dashboard') {
       if (views.dashboard) views.dashboard.style.display = 'flex';
-      this.refreshDashboardStats();
+      this.refreshTopProcesses();
     } else if (tab === 'cleaner') {
       if (views.cleaner) views.cleaner.style.display = 'flex';
       this.scanCleaner(false);
