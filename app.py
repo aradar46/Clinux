@@ -83,6 +83,7 @@ def install_desktop_shortcut_for_manager():
         f.write('\n'.join(content) + '\n')
 
     try:
+        script_path.chmod(0o755)
         desktop_file.chmod(0o755)
     except Exception:
         pass

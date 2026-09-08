@@ -29,6 +29,8 @@ else
   curl -fsSL "$TARBALL_URL" | tar -xz -C "$INSTALL_DIR" --strip-components=1
 fi
 
+chmod +x "$INSTALL_DIR/app.py"
+
 echo "Adding desktop launcher entry..."
 python3 "$INSTALL_DIR/app.py" --install-desktop-entry
 
