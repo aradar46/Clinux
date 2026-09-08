@@ -16,7 +16,12 @@ class ClinuxApp {
 
     // Selected Navigation Index for Keyboard Navigation
     this.selectedNavIdx = 0;
-    this.navItemKeys = ['dashboard', 'security', 'cleaner', 'storage', 'services', 'all', 'ai', 'dotfiles'];
+    this.navItemKeys = ['dashboard', 'security', 'cleaner', 'terminal', 'storage', 'services', 'all', 'ai', 'dotfiles'];
+
+    // Terminal State
+    this.term = null;
+    this.fitAddon = null;
+    this.terminalSessionId = null;
 
     // Security Audit State
     this.securityData = null;
@@ -97,6 +102,10 @@ class ClinuxApp {
     };
     window.addEventListener('beforeunload', handleClose);
     window.addEventListener('pagehide', handleClose);
+
+    window.addEventListener('resize', () => {
+      if (this.currentTab === 'terminal') this.fitTerminal();
+    });
   }
 
   // =========================================================================
@@ -112,6 +121,9 @@ class ClinuxApp {
     const next = current === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('clinux_theme', next);
+    if (this.term) {
+      this.term.options.theme = this.getTerminalThemeColors();
+    }
     this.toast(`Theme set to ${next}`, 'info');
   }
 
@@ -365,6 +377,7 @@ class ClinuxApp {
       apps: document.getElementById('appsView'),
       ai: document.getElementById('aiView'),
       dotfiles: document.getElementById('dotfilesView'),
+      terminal: document.getElementById('terminalView'),
       options: document.getElementById('optionsView'),
       empty: document.getElementById('emptyState')
     };
@@ -393,6 +406,9 @@ class ClinuxApp {
     } else if (tab === 'dotfiles') {
       if (views.dotfiles) views.dotfiles.style.display = 'flex';
       this.fetchDotfilesStatus();
+    } else if (tab === 'terminal') {
+      if (views.terminal) views.terminal.style.display = 'flex';
+      this.initOrFocusTerminal();
     } else {
       // Portable Apps (all, ignored, discovered)
       if (views.apps) views.apps.style.display = 'flex';
@@ -1920,6 +1936,207 @@ class ClinuxApp {
   }
 
   // =========================================================================
+  // Embedded Interactive Terminal
+  // =========================================================================
+  getTerminalThemeColors() {
+    const style = getComputedStyle(document.body);
+    const fg = style.getPropertyValue('--c-terminal-green-bright').trim() || '#68bd82';
+    const cursor = style.getPropertyValue('--c-warning-yellow').trim() || '#e4c95c';
+    return {
+      background: '#0c100c',
+      foreground: fg,
+      cursor: cursor,
+      cursorAccent: '#000000',
+      selectionBackground: 'rgba(104, 189, 130, 0.35)',
+      black: '#000000',
+      red: '#c85050',
+      green: fg,
+      yellow: '#e4c95c',
+      blue: '#4f8f62',
+      magenta: '#d8d0b8',
+      cyan: '#88ccaa',
+      white: '#d8d0b8',
+      brightBlack: '#555555',
+      brightRed: '#ff6666',
+      brightGreen: '#88ffaa',
+      brightYellow: '#ffee77',
+      brightBlue: '#77bbee',
+      brightMagenta: '#ffbbee',
+      brightCyan: '#99ffee',
+      brightWhite: '#ffffff'
+    };
+  }
+
+  async initOrFocusTerminal() {
+    if (!this.term) {
+      await this.initTerminal();
+    } else {
+      setTimeout(() => {
+        this.fitTerminal();
+        if (this.term) this.term.focus();
+      }, 50);
+    }
+  }
+
+  async initTerminal() {
+    const container = document.getElementById('terminalContainer');
+    if (!container) return;
+
+    if (typeof Terminal === 'undefined') {
+      container.innerHTML = '<div style="color:var(--c-danger-red); padding:12px;">Terminal library (xterm.js) not loaded.</div>';
+      return;
+    }
+
+    if (this.term) {
+      try { this.term.dispose(); } catch (e) {}
+      this.term = null;
+    }
+    container.innerHTML = '';
+
+    const colors = this.getTerminalThemeColors();
+    this.term = new Terminal({
+      cursorBlink: true,
+      cursorStyle: 'block',
+      fontFamily: "'JetBrains Mono', monospace",
+      fontSize: 14,
+      lineHeight: 1.25,
+      theme: colors,
+      convertEol: true
+    });
+
+    if (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) {
+      this.fitAddon = new FitAddon.FitAddon();
+      this.term.loadAddon(this.fitAddon);
+    }
+
+    this.term.open(container);
+    setTimeout(() => this.fitTerminal(), 50);
+
+    const badge = document.getElementById('terminalStatusBadge');
+    if (badge) {
+      badge.textContent = 'CONNECTING...';
+      badge.style.color = 'var(--c-warning-yellow)';
+    }
+
+    try {
+      const res = await fetch('/api/terminal/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cols: this.term.cols || 80,
+          rows: this.term.rows || 24
+        })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        if (badge) {
+          badge.textContent = 'FAILED';
+          badge.style.color = 'var(--c-danger-red)';
+        }
+        this.term.write('\r\n\x1b[31mFailed to start terminal session.\x1b[0m\r\n');
+        return;
+      }
+
+      this.terminalSessionId = data.session_id;
+      if (badge) {
+        badge.textContent = 'ONLINE';
+        badge.style.color = 'var(--c-terminal-green-bright)';
+      }
+
+      let inputBuf = '';
+      let inputTimer = null;
+      this.term.onData(chunk => {
+        inputBuf += chunk;
+        if (!inputTimer) {
+          inputTimer = setTimeout(() => {
+            const payload = inputBuf;
+            inputBuf = '';
+            inputTimer = null;
+            if (this.terminalSessionId) {
+              fetch('/api/terminal/input', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: this.terminalSessionId, data: payload })
+              }).catch(() => {});
+            }
+          }, 5);
+        }
+      });
+
+      this.term.onResize(({ cols, rows }) => {
+        if (this.terminalSessionId) {
+          fetch('/api/terminal/resize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: this.terminalSessionId, cols, rows })
+          }).catch(() => {});
+        }
+      });
+
+      this.startTerminalStream(this.terminalSessionId);
+      setTimeout(() => this.term.focus(), 100);
+    } catch (e) {
+      if (badge) {
+        badge.textContent = 'ERROR';
+        badge.style.color = 'var(--c-danger-red)';
+      }
+      this.term.write(`\r\n\x1b[31mConnection error: ${e.message}\x1b[0m\r\n`);
+    }
+  }
+
+  async startTerminalStream(sessionId) {
+    try {
+      const res = await fetch(`/api/terminal/stream?session_id=${encodeURIComponent(sessionId)}`);
+      if (!res.body) return;
+      const reader = res.body.getReader();
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (this.term && value) {
+          this.term.write(value);
+        }
+      }
+    } catch (e) {
+      console.warn('Terminal stream ended:', e);
+    } finally {
+      const badge = document.getElementById('terminalStatusBadge');
+      if (badge) {
+        badge.textContent = 'EXITED';
+        badge.style.color = 'var(--text-muted)';
+      }
+    }
+  }
+
+  fitTerminal() {
+    if (this.fitAddon) {
+      try {
+        this.fitAddon.fit();
+      } catch (e) {}
+    }
+  }
+
+  clearTerminal() {
+    if (this.term) {
+      this.term.clear();
+      this.term.focus();
+    }
+  }
+
+  async restartTerminal() {
+    if (this.terminalSessionId) {
+      try {
+        await fetch('/api/terminal/close', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: this.terminalSessionId })
+        });
+      } catch (e) {}
+      this.terminalSessionId = null;
+    }
+    await this.initTerminal();
+  }
+
+  // =========================================================================
   // File Browser Modal
   // =========================================================================
   openFileBrowser(mode, targetInputId, callback = null) {
@@ -2274,13 +2491,14 @@ class ClinuxApp {
   }
 
   openCommandPalette() {
-    const cmd = prompt('CLINUX COMMAND PALETTE:\n1: Dashboard\n2: Cleaner\n3: Portable Apps\n4: AI & Skills\n5: Dotfiles\n6: Options\nq: Exit', '1');
+    const cmd = prompt('CLINUX COMMAND PALETTE:\n1: Dashboard\n2: Cleaner\n3: Terminal\n4: Portable Apps\n5: AI & Skills\n6: Dotfiles\n7: Options\nq: Exit', '1');
     if (cmd === '1') this.setTab('dashboard');
     else if (cmd === '2') this.setTab('cleaner');
-    else if (cmd === '3') this.setTab('all');
-    else if (cmd === '4') this.setTab('ai');
-    else if (cmd === '5') this.setTab('dotfiles');
-    else if (cmd === '6') this.setTab('options');
+    else if (cmd === '3') this.setTab('terminal');
+    else if (cmd === '4') this.setTab('all');
+    else if (cmd === '5') this.setTab('ai');
+    else if (cmd === '6') this.setTab('dotfiles');
+    else if (cmd === '7') this.setTab('options');
   }
 
   closeWindow() {

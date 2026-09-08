@@ -24,7 +24,7 @@ class TestOptionsManager(unittest.TestCase):
         self.assertIn("appearance", opts)
         self.assertIn("behavior", opts)
         self.assertIn("modules", opts)
-        self.assertEqual(len(opts["tabs"]), 5)
+        self.assertEqual(len(opts["tabs"]), 6)
         self.assertEqual(opts["appearance"]["theme"], "classic-green")
 
     def test_database_save_and_merge_options(self):

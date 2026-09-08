@@ -840,3 +840,23 @@ body.crt-mode .app-window {
   font-weight: bold;
   font-size: 11px;
 }
+
+/* Terminal Panel & xterm Integration */
+.terminal-shell-box {
+  background-color: #0c100c;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.terminal-shell-box .xterm {
+  height: 100%;
+  padding: 4px;
+}
+
+.terminal-shell-box .xterm-viewport {
+  background-color: transparent !important;
+}
+
+.terminal-shell-box .xterm-screen {
+  font-family: 'JetBrains Mono', monospace !important;
+}

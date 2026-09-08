@@ -25,6 +25,7 @@ from .cleaner import SystemCleaner
 from .disk_analyzer import DiskAnalyzer
 from .ai_manager import SkillManager, AIStorageManager, AIRuntimeDetector
 from .dotfiles_manager import DotfilesManager
+from .terminal_manager import TerminalManager
 
 import time
 import threading
@@ -54,9 +55,17 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
         self.running = True
         self.active_clients = set()
         self.disconnect_timestamp = None
+        self.terminal_manager = TerminalManager()
 
         if self.auto_shutdown:
             self._start_watchdog()
+
+    def server_close(self):
+        try:
+            self.terminal_manager.close_all()
+        except Exception:
+            pass
+        super().server_close()
 
     def record_heartbeat(self, client_id: str = "default"):
         self.first_request_received = True
@@ -106,9 +115,16 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         skills_root = self.db.get_options().get("ai", {}).get("skills_root", "")
         self.skill_manager = SkillManager(skills_root=Path(skills_root)) if skills_root else SkillManager()
         self.ai_storage = AIStorageManager()
-        self.dotfiles_manager = DotfilesManager()
         self.dotfiles_manager = DotfilesManager(db=self.db)
         super().__init__(*args, **kwargs)
+
+    @property
+    def terminal_manager(self) -> TerminalManager:
+        if hasattr(self.server, 'terminal_manager'):
+            return self.server.terminal_manager
+        if not hasattr(self, '_fallback_terminal_manager'):
+            self._fallback_terminal_manager = TerminalManager()
+        return self._fallback_terminal_manager
 
     def log_message(self, format, *args):
         sys.stderr.write(f"[{self.log_date_time_string()}] {self.command} {self.path} - {format % args}\n")
@@ -198,8 +214,9 @@ class AppRequestHandler(BaseHTTPRequestHandler):
         elif path == '/api/ai/status':
             self._handle_api_ai_status()
         elif path == '/api/dotfiles/status':
-            self._handle_api_dotfiles_status()
             self._handle_api_dotfiles_status(query)
+        elif path == '/api/terminal/stream':
+            self._handle_api_terminal_stream(query)
         elif path == '/api/browse':
             self._handle_browse(query)
         else:
@@ -306,6 +323,40 @@ class AppRequestHandler(BaseHTTPRequestHandler):
                 self.dotfiles_manager.set_paths(repo_dir=custom_path, persist=False)
         results = self.dotfiles_manager.get_status()
         self._send_json(results)
+
+    def _handle_api_terminal_stream(self, query: Dict[str, list]):
+        session_ids = query.get('session_id') or query.get('id')
+        if not session_ids:
+            self._send_error_json("session_id is required", status=400)
+            return
+        session_id = session_ids[0]
+        session = self.terminal_manager.get_session(session_id)
+        if not session:
+            self._send_error_json(f"Terminal session '{session_id}' not found", status=404)
+            return
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/octet-stream')
+        self.send_header('Transfer-Encoding', 'chunked')
+        self.send_header('Cache-Control', 'no-cache, no-transform')
+        self.send_header('Connection', 'keep-alive')
+        self.end_headers()
+
+        try:
+            while session.is_alive():
+                chunk = session.read(max_bytes=4096, timeout=0.1)
+                if chunk:
+                    header = f"{len(chunk):X}\r\n".encode('ascii')
+                    self.wfile.write(header + chunk + b"\r\n")
+                    self.wfile.flush()
+                if hasattr(self.server, 'record_heartbeat'):
+                    self.server.record_heartbeat(f"term_{session_id}")
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception:
+            pass
 
     def _serve_static_file(self, path: str):
         if path == '/' or path == '/index.html':
@@ -455,6 +506,8 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._handle_post_cleaner(body)
         elif path.startswith('/api/dotfiles'):
             self._handle_post_dotfiles(path, body)
+        elif path.startswith('/api/terminal'):
+            self._handle_post_terminal(path, body)
         else:
             self._send_error_json("Endpoint not found", status=404)
 
@@ -669,6 +722,52 @@ class AppRequestHandler(BaseHTTPRequestHandler):
             self._send_json(res)
         else:
             self._send_error_json(f"Unknown endpoint '{path}'", status=404)
+
+    def _handle_post_terminal(self, path: str, body: Dict[str, Any]):
+        if path == '/api/terminal/create':
+            cols = int(body.get('cols', 80))
+            rows = int(body.get('rows', 24))
+            cwd = body.get('cwd')
+            session = self.terminal_manager.create_session(cols=cols, rows=rows, cwd=cwd)
+            self._send_json({
+                "success": True,
+                "session_id": session.id,
+                "cols": session.cols,
+                "rows": session.rows,
+            })
+        elif path == '/api/terminal/input':
+            session_id = body.get('session_id')
+            data = body.get('data', '')
+            if not session_id:
+                self._send_error_json("session_id is required", status=400)
+                return
+            session = self.terminal_manager.get_session(session_id)
+            if not session:
+                self._send_error_json(f"Session '{session_id}' not found", status=404)
+                return
+            if isinstance(data, str):
+                session.write(data.encode('utf-8'))
+            self._send_json({"success": True})
+        elif path == '/api/terminal/resize':
+            session_id = body.get('session_id')
+            cols = int(body.get('cols', 80))
+            rows = int(body.get('rows', 24))
+            if not session_id:
+                self._send_error_json("session_id is required", status=400)
+                return
+            session = self.terminal_manager.get_session(session_id)
+            if not session:
+                self._send_error_json(f"Session '{session_id}' not found", status=404)
+                return
+            session.resize(cols, rows)
+            self._send_json({"success": True, "cols": session.cols, "rows": session.rows})
+        elif path == '/api/terminal/close':
+            session_id = body.get('session_id')
+            if session_id:
+                self.terminal_manager.close_session(session_id)
+            self._send_json({"success": True})
+        else:
+            self._send_error_json(f"Unknown terminal endpoint '{path}'", status=404)
 
     def _handle_post_apps(self, path: str, body: Dict[str, Any]):
         if path == '/api/apps/inspect':

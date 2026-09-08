@@ -15,6 +15,7 @@ DEFAULT_OPTIONS = {
     "tabs": [
         {"id": "dashboard", "name": "Dashboard", "visible": True, "category": "SYSTEM"},
         {"id": "cleaner", "name": "Cleaner", "visible": True, "category": "SYSTEM"},
+        {"id": "terminal", "name": "Terminal", "visible": True, "category": "SYSTEM"},
         {"id": "apps", "name": "Portable Apps", "visible": True, "category": "DEVELOPMENT"},
         {"id": "ai", "name": "AI & Skills", "visible": True, "category": "AI & SKILLS"},
         {"id": "dotfiles", "name": "Dotfiles", "visible": True, "category": "PERSONAL"}
@@ -211,7 +212,12 @@ class Database:
         elif isinstance(default, list) and isinstance(user, list):
             valid_ids = {t.get("id") for t in default if isinstance(t, dict) and "id" in t}
             if valid_ids:
-                return [t for t in user if not isinstance(t, dict) or t.get("id") in valid_ids]
+                existing_ids = {t.get("id") for t in user if isinstance(t, dict) and "id" in t}
+                res = [t for t in user if not isinstance(t, dict) or t.get("id") in valid_ids]
+                for d_item in default:
+                    if isinstance(d_item, dict) and d_item.get("id") not in existing_ids:
+                        res.append(json.loads(json.dumps(d_item)))
+                return res
             return user
         else:
             return user
