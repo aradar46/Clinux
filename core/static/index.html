@@ -153,19 +153,7 @@
 
         <!-- VIEW 2: SYSTEM CLEANER -->
         <div id="cleanerView" class="retro-panel" style="display:none; flex-direction:column; gap:12px; margin-top:0;">
-          <div class="retro-panel-title">CLINUX TERMINAL CLEANER</div>
-
-          <div class="terminal-box">
-            <div style="font-weight:bold; font-size:13px;" id="cleanerHeroDesc">Scanning package manager caches and developer junk...</div>
-            <div class="retro-progress" style="margin-top:4px;">
-              PROGRESS: [<span id="cleanerProgressStr">████████████████████░░░░</span>] 82%
-            </div>
-            <div style="margin-top:6px; font-size:11px; color:var(--text-muted);">
-              Checking package caches... <span class="terminal-line-ok">OK</span> | Checking developer caches... <span class="terminal-line-ok">OK</span> | Checking logs... <span class="terminal-line-ok">OK</span>
-            </div>
-          </div>
-
-          <div class="action-toolbar">
+          <div class="action-toolbar" style="margin-top:0;">
             <button class="retro-btn retro-btn-green" id="cleanSelectedBtn" onclick="app.cleanSelectedCaches()">[ C ] CLEAN SELECTED (<span id="cleanSelectedSizeStr">0 B</span>)</button>
             <button class="retro-btn" id="cleanerRescanBtn" onclick="app.scanCleaner(true)">[ R ] RE-SCAN</button>
             <button class="retro-btn" onclick="app.toggleSelectAllCleaner()">[ T ] TOGGLE ALL</button>
