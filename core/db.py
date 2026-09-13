@@ -15,7 +15,6 @@ DEFAULT_OPTIONS = {
     "tabs": [
         {"id": "dashboard", "name": "Dashboard", "visible": True, "category": "SYSTEM"},
         {"id": "cleaner", "name": "Cleaner", "visible": True, "category": "SYSTEM"},
-        {"id": "terminal", "name": "Terminal", "visible": True, "category": "SYSTEM"},
         {"id": "apps", "name": "Portable Apps", "visible": True, "category": "DEVELOPMENT"},
         {"id": "ai", "name": "AI & Skills", "visible": True, "category": "AI & SKILLS"},
         {"id": "dotfiles", "name": "Dotfiles", "visible": True, "category": "PERSONAL"}
